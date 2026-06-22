@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+chat_history/
+uploads/
+chat_logs/*.jsonl
+reminders.json
+usage.jsonl
+*.jsonl
+*.log
+.venv/
+venv/
