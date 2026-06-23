@@ -23,6 +23,12 @@ async def main():
         raise RuntimeError("MAX_TOKEN не задан в .env (токен бота от @MasterBot в MAX)")
 
     bot = Bot(token)
+    # Базовый URL MAX Bot API. Переопределяем до первого запроса (до get_me),
+    # пока aiohttp-сессия не закеширована с дефолтным platform-api.max.ru.
+    api_url = os.environ.get("MAX_API_URL", "https://platform-api2.max.ru")
+    bot.set_api_url(api_url)
+    logger.info(f"MAX API: {api_url}")
+
     dp = Dispatcher()
 
     me = await bot.get_me()
