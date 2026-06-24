@@ -12,6 +12,7 @@ usage.jsonl
 *.log
 .venv/
 venv/
-# Рантайм-данные базы знаний (личные профили участников, индекс) — не в git
+# Рантайм-данные базы знаний (личные профили участников, индекс, кэш векторов) — не в git
 knowledge_base/INDEX.md
+knowledge_base/embeddings_cache.json
 knowledge_base/*/

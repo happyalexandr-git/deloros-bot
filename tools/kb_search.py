@@ -34,40 +34,82 @@ def list_kb() -> str:
     return "**Содержимое базы знаний:**\n" + "\n".join(lines)
 
 
-def search_kb(query: str, category: str | None = None) -> str:
-    """
-    Поиск по MD-файлам базы знаний.
-    Возвращает найденные фрагменты или сообщение что ничего не найдено.
-    """
-    query_lower = query.lower()
-    results = []
+# Порог смыслового сходства: ниже — считаем нерелевантным
+MIN_SCORE = 0.2
 
+
+def _collect_files(category: str | None) -> list:
     if category and category in CATEGORY_MAP:
         search_dirs = [KB_PATH / CATEGORY_MAP[category]]
     else:
         search_dirs = [KB_PATH / d for d in CATEGORY_MAP.values()]
+    files = []
+    for d in search_dirs:
+        if d.exists():
+            files.extend(d.rglob("*.md"))
+    return files
 
-    for search_dir in search_dirs:
-        if not search_dir.exists():
+
+def search_kb(query: str, category: str | None = None) -> str:
+    """
+    Семантический поиск по базе знаний (эмбеддинги OpenAI) — находит по смыслу,
+    а не по точному слову. При сбое эмбеддингов откатывается на подстрочный поиск.
+    """
+    files = _collect_files(category)
+    if not files:
+        return f"В базе знаний пока нет записей{f' в разделе {category}' if category else ''}."
+
+    try:
+        from tools.embeddings import semantic_search
+        ranked = semantic_search(query, files, top_k=5)
+    except Exception:
+        return _substring_search(query, files)  # фолбэк при недоступности OpenAI
+
+    results = []
+    for md_file, score in ranked:
+        if score < MIN_SCORE:
             continue
-        for md_file in search_dir.rglob("*.md"):
-            try:
-                text = md_file.read_text(encoding="utf-8")
-            except Exception:
-                continue
-
-            if query_lower in text.lower():
-                snippet = _extract_snippet(text, query_lower)
-                relative = md_file.relative_to(KB_PATH)
-                related = _extract_related(text)
-                related_str = f"\n**Связано с:** {related}" if related else ""
-                results.append(f"### [{relative}]{related_str}\n{snippet}")
+        try:
+            text = md_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        relative = md_file.relative_to(KB_PATH)
+        related = _extract_related(text)
+        related_str = f"\n**Связано с:** {related}" if related else ""
+        results.append(f"### [{relative}] (сходство {score:.2f}){related_str}\n{_body_snippet(text)}")
 
     if not results:
-        return f"В базе знаний ничего не найдено по запросу: «{query}»"
+        return f"В базе знаний ничего подходящего по смыслу не найдено по запросу: «{query}»"
 
-    header = f"Найдено совпадений: {len(results)}\n\n"
-    return header + "\n---\n".join(results[:5])  # максимум 5 результатов
+    return f"Найдено по смыслу: {len(results)}\n\n" + "\n---\n".join(results)
+
+
+def _substring_search(query: str, files: list) -> str:
+    """Резервный подстрочный поиск (если эмбеддинги недоступны)."""
+    q = query.lower()
+    results = []
+    for md_file in files:
+        try:
+            text = md_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if q in text.lower():
+            relative = md_file.relative_to(KB_PATH)
+            results.append(f"### [{relative}]\n{_extract_snippet(text, q)}")
+    if not results:
+        return f"В базе знаний ничего не найдено по запросу: «{query}»"
+    return f"Найдено совпадений: {len(results)}\n\n" + "\n---\n".join(results[:5])
+
+
+def _body_snippet(text: str, limit: int = 400) -> str:
+    """Возвращает начало содержимого профиля без YAML-фронтматтера."""
+    body = text
+    if body.startswith("---"):
+        end = body.find("---", 3)
+        if end != -1:
+            body = body[end + 3:]
+    body = body.strip()
+    return body[:limit] + ("..." if len(body) > limit else "")
 
 
 def _extract_related(text: str) -> str:
