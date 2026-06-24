@@ -2,8 +2,8 @@ import json
 import os
 from pathlib import Path
 
-import anthropic
 import httpx
+from openai import OpenAI
 
 from tools.kb_search import search_kb, list_kb
 from tools.chat_log import get_chat_log, search_chat_log
@@ -40,7 +40,7 @@ SYSTEM_PROMPT = """Ты — Делорос, ассистент чата сооб
 - Админ сообщества — Александр; его настройки и просьбы по модерации приоритетны.
 - Если не знаешь — честно скажи и предложи web_search."""
 
-TOOLS = [
+_TOOL_DEFS = [
     {
         "name": "get_chat_log",
         "description": "Получить последние сообщения чата для саммари. Используй когда просят саммари, итоги обсуждения, что обсуждали сегодня.",
@@ -200,6 +200,21 @@ TOOLS = [
     },
 ]
 
+# Модель OpenAI и обёртка tool-схем в формат function-calling
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": t["name"],
+            "description": t["description"],
+            "parameters": t["input_schema"],
+        },
+    }
+    for t in _TOOL_DEFS
+]
+
 
 def _load_history(chat_id: int) -> list[dict]:
     path = HISTORY_PATH / f"{chat_id}.json"
@@ -217,7 +232,7 @@ def _save_history(chat_id: int, history: list[dict]) -> None:
 
 
 def add_system_event(chat_id: int, event: str) -> None:
-    """Добавляет системное событие в историю чата (без вызова Claude)."""
+    """Добавляет системное событие в историю чата (без вызова LLM)."""
     history = _load_history(chat_id)
     history.append({"role": "user", "content": f"[Система]: {event}"})
     history.append({"role": "assistant", "content": "Понял, зафиксировал."})
@@ -283,15 +298,17 @@ async def run_agent(
     chat_type: str = "unknown",
 ) -> str:
     """
-    Запускает агентный цикл: отправляет запрос в Claude,
+    Запускает агентный цикл: отправляет запрос в OpenAI,
     выполняет tool calls, возвращает финальный ответ.
     """
+    client_kwargs = {"api_key": os.environ["OPENAI_API_KEY"]}
+    base_url = os.environ.get("OPENAI_BASE_URL")
+    if base_url:
+        client_kwargs["base_url"] = base_url
     proxy_url = os.environ.get("PROXY_URL")
     if proxy_url:
-        http_client = httpx.Client(proxy=proxy_url)
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], http_client=http_client)
-    else:
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        client_kwargs["http_client"] = httpx.Client(proxy=proxy_url)
+    client = OpenAI(**client_kwargs)
 
     history = _load_history(chat_id)
 
@@ -301,45 +318,45 @@ async def run_agent(
     })
     history = _trim_history(history)
 
-    messages = [{"role": m["role"], "content": m["content"]} for m in history]
+    # У OpenAI системный промпт — первое сообщение с ролью system
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages += [{"role": m["role"], "content": m["content"]} for m in history]
 
     total_input_tokens = 0
     total_output_tokens = 0
 
     # Агентный цикл
     while True:
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
             max_tokens=4096,
-            system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=messages,
         )
 
-        total_input_tokens += response.usage.input_tokens
-        total_output_tokens += response.usage.output_tokens
+        if response.usage:
+            total_input_tokens += response.usage.prompt_tokens
+            total_output_tokens += response.usage.completion_tokens
 
-        if response.stop_reason == "tool_use":
-            tool_results = []
-            assistant_content = response.content
+        msg = response.choices[0].message
 
-            for block in response.content:
-                if block.type == "tool_use":
-                    result = _execute_tool(block.name, block.input, chat_id=chat_id)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result,
-                    })
-
-            messages.append({"role": "assistant", "content": assistant_content})
-            messages.append({"role": "user", "content": tool_results})
+        if msg.tool_calls:
+            # Кладём ответ ассистента с вызовами и результаты каждого инструмента
+            messages.append(msg)
+            for tc in msg.tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                result = _execute_tool(tc.function.name, args, chat_id=chat_id)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result,
+                })
             continue
 
-        final_text = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                final_text += block.text
+        final_text = msg.content or ""
 
         history.append({"role": "assistant", "content": final_text})
         _save_history(chat_id, history)

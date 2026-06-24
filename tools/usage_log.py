@@ -5,9 +5,9 @@ from collections import defaultdict
 
 USAGE_PATH = Path(__file__).parent.parent / "usage.jsonl"
 
-# Claude Sonnet 4.6 pricing (USD per million tokens)
-PRICE_INPUT = 3.0
-PRICE_OUTPUT = 15.0
+# OpenAI gpt-4o pricing (USD per million tokens)
+PRICE_INPUT = 2.5
+PRICE_OUTPUT = 10.0
 
 # OpenAI Whisper pricing (USD per second)
 PRICE_WHISPER_PER_SEC = 0.006 / 60
@@ -61,13 +61,13 @@ def get_stats(days: int = 30) -> str:
     irkutsk = timezone(timedelta(hours=8))
     cutoff = datetime.now(irkutsk) - timedelta(days=days)
 
-    total_claude_cost = 0.0
+    total_gpt_cost = 0.0
     total_whisper_cost = 0.0
     total_input = 0
     total_output = 0
     total_voice_sec = 0
     by_user: dict[str, dict] = defaultdict(lambda: {
-        "input": 0, "output": 0, "claude_cost": 0.0,
+        "input": 0, "output": 0, "gpt_cost": 0.0,
         "voice_sec": 0, "whisper_cost": 0.0, "requests": 0,
     })
 
@@ -88,10 +88,10 @@ def get_stats(days: int = 30) -> str:
                 else:
                     total_input += e["input_tokens"]
                     total_output += e["output_tokens"]
-                    total_claude_cost += e["cost_usd"]
+                    total_gpt_cost += e["cost_usd"]
                     by_user[u]["input"] += e["input_tokens"]
                     by_user[u]["output"] += e["output_tokens"]
-                    by_user[u]["claude_cost"] += e["cost_usd"]
+                    by_user[u]["gpt_cost"] += e["cost_usd"]
                     by_user[u]["requests"] += 1
             except Exception:
                 continue
@@ -99,19 +99,19 @@ def get_stats(days: int = 30) -> str:
     if not by_user:
         return f"За последние {days} дней запросов не было."
 
-    total_cost = total_claude_cost + total_whisper_cost
+    total_cost = total_gpt_cost + total_whisper_cost
     lines = [f"📊 <b>Статистика за {days} дней</b>\n"]
-    lines.append(f"Claude: {total_input + total_output:,} токенов → <b>${total_claude_cost:.4f}</b>")
+    lines.append(f"GPT: {total_input + total_output:,} токенов → <b>${total_gpt_cost:.4f}</b>")
     if total_voice_sec:
         lines.append(f"Whisper: {total_voice_sec // 60}м {total_voice_sec % 60}с аудио → <b>${total_whisper_cost:.4f}</b>")
     lines.append(f"Итого: <b>${total_cost:.4f}</b>\n")
     lines.append("<b>По пользователям:</b>")
 
-    for user, data in sorted(by_user.items(), key=lambda x: x[1]["claude_cost"] + x[1]["whisper_cost"], reverse=True):
-        user_cost = data["claude_cost"] + data["whisper_cost"]
+    for user, data in sorted(by_user.items(), key=lambda x: x[1]["gpt_cost"] + x[1]["whisper_cost"], reverse=True):
+        user_cost = data["gpt_cost"] + data["whisper_cost"]
         parts = [f"• {user}:"]
         if data["requests"]:
-            parts.append(f"{data['requests']} запросов Claude")
+            parts.append(f"{data['requests']} запросов GPT")
         if data["voice_sec"]:
             parts.append(f"{data['voice_sec']}с голоса")
         parts.append(f"<b>${user_cost:.4f}</b>")

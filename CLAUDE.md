@@ -22,7 +22,7 @@
 ## Архитектура
 - `main.py` — запуск, инициализация MAX-бота, long-polling
 - `handlers.py` — обработчики MAX (@упоминания, голос, документы, команды)
-- `agent.py` — агентный цикл Claude, `SYSTEM_PROMPT`, `TOOLS`
+- `agent.py` — агентный цикл OpenAI (gpt-4o, function calling), `SYSTEM_PROMPT`, `TOOLS`
 - `scheduler.py` — фоновая проверка напоминаний
 - `tools/` — инструменты агента
 
@@ -67,7 +67,7 @@ Markdown в `knowledge_base/members/`, фронтматтер как в valentin
 ```
 
 ## Статус
-Транспорт **портирован на MAX (`maxapi`)**: `main.py`, `handlers.py`, `scheduler.py` переписаны; ядро (`agent.py`, `tools/`) не тронуто. Локально: синтаксис + символы maxapi проверены, граф импортов чистый (падает только на `anthropic`, который ставится на сервере). Живой прогон — после получения токена.
+Транспорт **портирован на MAX (`maxapi`)**, мозг агента — **OpenAI (gpt-4o, function calling)** вместо Anthropic. `main.py`, `handlers.py`, `scheduler.py` переписаны под maxapi; `agent.py` переписан под OpenAI SDK; `tools/` не тронуты. Локально проверено: синтаксис + символы maxapi, граф импортов чистый (падает только на внешних зависимостях, которые ставятся на сервере). Живой прогон — после ввода `OPENAI_API_KEY`.
 
 ### Решения, принятые при миграции
 - **`handlers.py`** экспортирует `register_handlers(dp, bot, bot_id, bot_username)`; `main.py` берёт личность бота из `bot.get_me()`.
@@ -76,7 +76,7 @@ Markdown в `knowledge_base/members/`, фронтматтер как в valentin
 - **Голос:** используем встроенную транскрипцию MAX (`Audio.transcription`) — OpenAI/Whisper больше не нужен для голоса (`tools/voice_transcribe.py` остаётся как неиспользуемый фолбэк).
 - **Документы:** скачиваются по `attachment.payload.url` через `httpx`.
 - **`_import_telegram_export`** оставлен в `handlers.py` для разовой миграции истории старого чата (транспортно-независим).
-- **`.env`:** `MAX_TOKEN` вместо `TELEGRAM_TOKEN`; `PROXY_URL` оставлен только для Anthropic API (MAX-транспорту прокси не нужен).
+- **`.env`:** `MAX_TOKEN` вместо `TELEGRAM_TOKEN`; `OPENAI_API_KEY` для агента (`OPENAI_MODEL`/`OPENAI_BASE_URL` опционально); `PROXY_URL` — только для OpenAI API (MAX-транспорту прокси не нужен).
 
 ### Открытые вопросы / до запуска
 - [ ] Бот-токен от `@MasterBot` в `.env` (получаю позже)
