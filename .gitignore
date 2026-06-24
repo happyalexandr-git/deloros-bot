@@ -12,3 +12,6 @@ usage.jsonl
 *.log
 .venv/
 venv/
+# Рантайм-данные базы знаний (личные профили участников, индекс) — не в git
+knowledge_base/INDEX.md
+knowledge_base/*/

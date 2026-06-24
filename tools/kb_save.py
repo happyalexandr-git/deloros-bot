@@ -14,6 +14,42 @@ CATEGORY_MAP = {
     "research": "research",
 }
 
+# Шаблон индекса — INDEX.md рантайм-файл (в .gitignore), восстанавливается если пропал
+INDEX_TEMPLATE = """# База знаний — Делорос
+
+## Участники
+
+_пока пусто_
+
+## Компании
+
+_пока пусто_
+
+## Офферы
+
+_пока пусто_
+
+## Запросы
+
+_пока пусто_
+
+## Встречи
+
+_пока пусто_
+
+## Транскрибации
+
+_пока пусто_
+
+## Документы
+
+_пока пусто_
+
+## Исследования
+
+_пока пусто_
+"""
+
 
 def save_to_kb(
     category: str,
@@ -100,7 +136,8 @@ def _update_index(category: str, name: str, filename: str) -> None:
     """Обновляет INDEX.md — добавляет запись если её нет."""
     index_path = KB_PATH / "INDEX.md"
     if not index_path.exists():
-        return
+        KB_PATH.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(INDEX_TEMPLATE, encoding="utf-8")
 
     text = index_path.read_text(encoding="utf-8")
     folder = CATEGORY_MAP[category]
