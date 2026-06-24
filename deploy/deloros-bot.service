@@ -1,0 +1,19 @@
+[Unit]
+Description=Deloros bot — ассистент сообщества «Деловая Россия» в MAX
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alex
+WorkingDirectory=/home/alex/deloros_bot
+EnvironmentFile=/home/alex/deloros_bot/.env
+ExecStart=/home/alex/deloros_bot/.venv/bin/python main.py
+Restart=always
+RestartSec=5
+# логи уходят в journald: journalctl -u deloros-bot -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

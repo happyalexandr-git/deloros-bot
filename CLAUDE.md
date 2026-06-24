@@ -60,10 +60,26 @@ Markdown в `knowledge_base/members/`, фронтматтер как в valentin
 - `usage.jsonl` — лог расходов
 
 ## Деплой
-Тот же сервер (Ubuntu, корпоративная сеть). Отдельный systemd-сервис `deloros-bot`, отдельный репозиторий.
+Тот же сервер (Ubuntu, корпоративная сеть), что и `valentin_bot`. Отдельный репозиторий, отдельный systemd-сервис `deloros-bot`, отдельная папка `/home/alex/deloros_bot`. Unit-файл лежит в репо — `deploy/deloros-bot.service`.
+
+### Первичная установка на сервере (разово)
+```bash
+cd /home/alex
+git clone https://github.com/happyalexandr-git/deloros-bot.git
+cd deloros-bot
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env          # вписать MAX_TOKEN + OPENAI_API_KEY (+ TAVILY_API_KEY)
+sudo cp deploy/deloros-bot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now deloros-bot
+journalctl -u deloros-bot -f  # проверить запуск
+```
+
+### Обновление (как у valentin)
 ```bash
 # мак: git add . && git commit && git push
-# сервер: cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot
+# сервер:
+cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot
 ```
 
 ## Статус
