@@ -227,6 +227,19 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
         chat_id = _peer_id(msg)
         username = _get_username(msg)
         atts = _attachments(msg)
+        text = _text_of(msg)
+        is_group = _is_group(msg)
+
+        # Пассивно сохраняем весь текст группы в лог (память/метчинг по истории)
+        if is_group and text:
+            save_message(chat_id, username, text)
+
+        # В группе бот реагирует (на текст И на вложения) только по @упоминанию /
+        # reply. В личке — всегда. Это убирает «реакцию на каждый файл» в чате.
+        if is_group and not _is_mentioned(msg):
+            return
+
+        caption = _clean_mention(text) if is_group else text
 
         # 1) Голос/аудио — MAX присылает транскрипцию в самом вложении
         audio = next((a for a in atts if getattr(a, "type", None) == AttachmentType.AUDIO), None)
@@ -234,26 +247,16 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             await _handle_audio(event, bot, audio, chat_id, username)
             return
 
-        # 2) Документ — авто-обработка без @упоминания
+        # 2) Документ — резюме→профиль, встреча/исследование→своя категория
         doc = next((a for a in atts if getattr(a, "type", None) == AttachmentType.FILE), None)
         if doc is not None:
-            await _handle_document(event, bot, doc, chat_id, username)
+            await _handle_document(event, bot, doc, chat_id, username, caption)
             return
 
         # 3) Текст
-        text = _text_of(msg)
         if not text:
             return
-
-        # Пассивно сохраняем все сообщения группы в лог
-        if _is_group(msg):
-            save_message(chat_id, username, text)
-
-        # В группе отвечаем только на @упоминание / reply
-        if _is_group(msg) and not _is_mentioned(msg):
-            return
-
-        clean_text = _clean_mention(text) if _is_group(msg) else text
+        clean_text = caption
         if not clean_text:
             await event.message.answer("Слушаю — чем могу помочь?")
             return
@@ -305,7 +308,7 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
         await event.message.answer("Произошла ошибка. Попробуй ещё раз.")
 
 
-async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, username: str):
+async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, username: str, caption: str = ""):
     original_name = getattr(doc, "filename", None) or "document"
     suffix = Path(original_name).suffix.lower()
 
@@ -357,19 +360,26 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             )
             return
 
-        # Передаём содержимое агенту: резюме/био → профиль участника,
-        # иной документ → краткое резюме. Длинный текст обрезаем.
+        # Передаём содержимое агенту: он сам определяет тип и категорию KB.
+        # Длинный текст обрезаем под токены.
         doc_text = result["content"]
         if len(doc_text) > MAX_DOC_CHARS:
             doc_text = doc_text[:MAX_DOC_CHARS] + "\n\n[...текст обрезан...]"
 
+        instruction = f"Сопроводительное сообщение: «{caption}»\n\n" if caption else ""
         agent_msg = (
-            f"Участник {username} прислал файл «{original_name}». Извлечённый текст:\n\n"
-            f"{doc_text}\n\n"
-            "Если это резюме, биография или рассказ участника о себе — извлеки профиль "
-            "(чем занимается, компетенции, чем полезен, что ищет, контакт), сохрани через "
-            "save_to_kb(category='member') и переспроси только то, чего не хватает. "
-            "Если это другой документ — кратко резюмируй суть."
+            f"Участник {username} прислал файл «{original_name}». "
+            f"{instruction}"
+            f"Извлечённый текст:\n\n{doc_text}\n\n"
+            "Определи по содержанию и сопроводительному сообщению, что это, и поступи так:\n"
+            "- резюме / биография / рассказ о себе → извлеки профиль (деятельность, компетенции, "
+            "чем полезен, что ищет, мотивация, хобби), сохрани save_to_kb(category='member'), "
+            "переспроси только недостающее;\n"
+            "- протокол / стенограмма / заметки встречи → сохрани save_to_kb(category='meeting') "
+            "с кратким содержанием, решениями и договорённостями;\n"
+            "- исследование / аналитика / статья → сохрани save_to_kb(category='research') с кратким резюме;\n"
+            "- иначе → кратко резюмируй суть.\n"
+            "Полный текст файла уже сохранён в базе для поиска — от тебя нужна структурная запись и/или резюме."
         )
         await _typing(bot, chat_id)
         response = await run_agent(
