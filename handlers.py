@@ -13,7 +13,7 @@ from maxapi.enums.sender_action import SenderAction
 from maxapi.types import Command, MessageCreated
 from maxapi.types.updates.bot_started import BotStarted
 
-from agent import run_agent, add_system_event
+from agent import run_agent
 from tools.usage_log import get_stats, log_voice_usage
 from tools.chat_log import save_message, get_chat_log
 from tools.kb_save import save_to_kb
@@ -25,6 +25,10 @@ UPLOADS_PATH.mkdir(exist_ok=True)
 logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".json"}
+
+# Сколько символов извлечённого текста документа отдаём агенту (резюме короткие,
+# презентации/контракты режем, чтобы не раздувать токены)
+MAX_DOC_CHARS = 8000
 
 # Личность бота, заполняется в register_handlers из bot.get_me()
 _BOT_ID: int = 0
@@ -337,6 +341,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             return
 
         result = process_document(local_path, original_name, username)
+        # Сырой текст сохраняем в KB как документ — для полнотекстового поиска
         save_to_kb(
             category="document",
             name=original_name,
@@ -345,18 +350,35 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
         )
         local_path.unlink(missing_ok=True)
 
-        add_system_event(
-            chat_id,
-            f"Пользователь {username} загрузил документ '{original_name}' — "
-            f"сохранён в базу знаний (категория: document).",
-        )
+        if result["text_length"] == 0:
+            await event.message.answer(
+                f"Файл `{original_name}` получил, но не смог извлечь из него текст.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
 
-        await event.message.answer(
-            f"Сохранил в базу знаний\n"
-            f"Извлечено символов: {result['text_length']}\n\n"
-            f"**Превью:**\n{result['preview']}",
-            parse_mode=ParseMode.MARKDOWN,
+        # Передаём содержимое агенту: резюме/био → профиль участника,
+        # иной документ → краткое резюме. Длинный текст обрезаем.
+        doc_text = result["content"]
+        if len(doc_text) > MAX_DOC_CHARS:
+            doc_text = doc_text[:MAX_DOC_CHARS] + "\n\n[...текст обрезан...]"
+
+        agent_msg = (
+            f"Участник {username} прислал файл «{original_name}». Извлечённый текст:\n\n"
+            f"{doc_text}\n\n"
+            "Если это резюме, биография или рассказ участника о себе — извлеки профиль "
+            "(чем занимается, компетенции, чем полезен, что ищет, контакт), сохрани через "
+            "save_to_kb(category='member') и переспроси только то, чего не хватает. "
+            "Если это другой документ — кратко резюмируй суть."
         )
+        await _typing(bot, chat_id)
+        response = await run_agent(
+            chat_id=chat_id,
+            username=username,
+            user_message=agent_msg,
+            chat_type=str(event.message.recipient.chat_type),
+        )
+        await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка обработки файла: {e}")
         local_path.unlink(missing_ok=True)
