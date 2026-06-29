@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import uuid
 from pathlib import Path
 
 import httpx
@@ -353,11 +354,25 @@ async def _handle_contact(event: MessageCreated, contact, user_id):
 
 
 async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, username: str):
+    # 1) если MAX приложил транскрипцию — берём бесплатно
     text = (getattr(audio, "transcription", None) or "").strip()
+    # 2) иначе скачиваем аудио и распознаём через Whisper
+    if not text:
+        url = _payload_url(audio)
+        if url and os.environ.get("OPENAI_API_KEY"):
+            local_path = UPLOADS_PATH / f"voice_{uuid.uuid4().hex}.ogg"
+            try:
+                await _typing(bot, chat_id)
+                await _download(url, local_path)
+                from tools.voice_transcribe import transcribe_voice
+                text = (transcribe_voice(local_path) or "").strip()
+            except Exception as e:
+                logger.error(f"Ошибка транскрибации голоса: {e}")
+            finally:
+                local_path.unlink(missing_ok=True)
     if not text:
         await event.message.answer(
-            "Голосовое получил, но в нём нет распознанного текста. "
-            "Можешь продублировать сообщением?"
+            "Не смог распознать голосовое. Можешь продублировать сообщением?"
         )
         return
 

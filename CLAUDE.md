@@ -105,7 +105,7 @@ cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot
 - **Endpoint MAX:** `platform-api.max.ru` (серт Let's Encrypt). `platform-api2.max.ru` требует российский УЦ Минцифры (нет в certifi) — НЕ используем. Переопределяется `MAX_API_URL`.
 - **Онбординг:** триггер — `BotStarted` (нажатие «Начать») + `/start` + @упоминание.
 - **Упоминание в группе:** `@username` в тексте, `USER_MENTION` в `body.markup` по `user_id` бота, либо reply на бота.
-- **Голос:** встроенная транскрипция MAX (`Audio.transcription`), бесплатно; Whisper (`tools/voice_transcribe.py`) — неиспользуемый фолбэк.
+- **Голос:** MAX в `message_created` присылает только ссылку на аудио (поле `transcription` обычно пустое). `_handle_audio`: если `transcription` есть — берём её; иначе скачиваем по `payload.url` и распознаём через Whisper (`tools/voice_transcribe.py`, `whisper-1`).
 - **Документы:** скачиваются по `attachment.payload.url` через `httpx`; агент раскладывает по категории (member/meeting/research/резюме). Сырой текст всегда сохраняется как `document` для поиска.
 - **Поиск:** семантический (`tools/embeddings.py`, gpt-эмбеддинги), порог сходства 0.2, подстрочный фолбэк при сбое OpenAI.
 - **KB вне git:** профили/INDEX/кэш векторов в `.gitignore` (приватность + чтобы рантайм-записи не конфликтовали с `git pull`). `INDEX.md` самовосстанавливается.
