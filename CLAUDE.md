@@ -92,7 +92,7 @@ journalctl -u deloros-bot -f  # проверить запуск
 ```
 
 ### Админ-панель (Фаза 2)
-Отдельный сервис `deloros-panel` (`deploy/deloros-panel.service`), uvicorn на порту 8080 (только корп-сеть). Доступ: `http://srv001:8080`, логин+пароль из `.env` (`ADMIN_USER`/`ADMIN_PASSWORD`/`PANEL_SECRET_KEY`).
+Отдельный сервис `deloros-panel` (`deploy/deloros-panel.service`), uvicorn на порту 8080 (только корп-сеть). Доступ: `http://srv001:8087`, логин+пароль из `.env` (`ADMIN_USER`/`ADMIN_PASSWORD`/`PANEL_SECRET_KEY`).
 ```bash
 sudo cp deploy/deloros-panel.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now deloros-panel
