@@ -10,14 +10,17 @@ from maxapi.enums.chat_type import ChatType
 from maxapi.enums.message_link_type import MessageLinkType
 from maxapi.enums.parse_mode import ParseMode
 from maxapi.enums.sender_action import SenderAction
-from maxapi.types import Command, MessageCreated
+from maxapi.types import Command, MessageCreated, RequestContactButton
 from maxapi.types.updates.bot_started import BotStarted
+from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
 from agent import run_agent
 from tools.usage_log import get_stats, log_voice_usage
 from tools.chat_log import save_message, get_chat_log
 from tools.kb_save import save_to_kb
 from tools.doc_processor import process_document
+from tools.roster import find_member_by_phone, normalize_phone
+from tools.access import is_verified, mark_verified, verified_name
 
 UPLOADS_PATH = Path(__file__).parent / "uploads"
 UPLOADS_PATH.mkdir(exist_ok=True)
@@ -33,6 +36,39 @@ MAX_DOC_CHARS = 8000
 # Личность бота, заполняется в register_handlers из bot.get_me()
 _BOT_ID: int = 0
 _BOT_USERNAME: str = ""
+
+# Тексты гейта по телефону
+WELCOME_PROMPT = (
+    "Привет! Я **Делорос** — ассистент сообщества «Деловая Россия».\n\n"
+    "Доступ к боту только для участников клуба. Чтобы подтвердить, что ты "
+    "участник, нажми кнопку **«📞 Поделиться номером»** ниже."
+)
+NEED_PHONE_PROMPT = (
+    "Чтобы пользоваться ботом, подтверди, что ты участник клуба «Деловая Россия» "
+    "— поделись номером телефона кнопкой ниже."
+)
+NOT_IN_ROSTER = (
+    "Такого телефона нет среди участников клуба «Деловая Россия». "
+    "Если это ошибка — обратись к администратору."
+)
+
+
+def _contact_kb():
+    """Клавиатура с кнопкой «Поделиться номером»."""
+    kb = InlineKeyboardBuilder()
+    kb.row(RequestContactButton(text="📞 Поделиться номером"))
+    return kb.as_markup()
+
+
+def _extract_phone(attachment) -> str | None:
+    """Достаёт телефон из CONTACT-вложения MAX (vcf)."""
+    payload = getattr(attachment, "payload", None)
+    if payload is None:
+        return None
+    try:
+        return payload.vcf.phone
+    except Exception:
+        return None
 
 
 # ---------- хелперы ----------
@@ -173,20 +209,30 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
 
     @dp.bot_started()
     async def on_bot_started(event: BotStarted):
-        """Пользователь нажал «Начать» — повод запустить онбординг."""
-        await bot.send_message(
-            chat_id=event.chat_id,
-            text=(
-                "Привет! Я **Делорос** — ассистент сообщества «Деловая Россия».\n\n"
-                "Давай познакомимся: расскажи в двух словах, чем ты занимаешься? "
-                "Я задам ещё пару вопросов и соберу твой профиль, чтобы находить "
-                "тебе полезные связи в сообществе."
-            ),
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        """Заход по ссылке: подтверждённого приветствуем, иначе просим телефон."""
+        uid = event.user.user_id if event.user else None
+        if is_verified(uid):
+            await bot.send_message(
+                chat_id=event.chat_id,
+                text=f"С возвращением, {verified_name(uid) or 'друг'}! Чем помочь?",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        else:
+            await bot.send_message(
+                chat_id=event.chat_id,
+                text=WELCOME_PROMPT,
+                parse_mode=ParseMode.MARKDOWN,
+                attachments=[_contact_kb()],
+            )
 
     @dp.message_created(Command("start"))
     async def cmd_start(event: MessageCreated):
+        uid = event.message.sender.user_id if event.message.sender else None
+        if not is_verified(uid):
+            await event.message.answer(
+                WELCOME_PROMPT, parse_mode=ParseMode.MARKDOWN, attachments=[_contact_kb()]
+            )
+            return
         await event.message.answer(
             "Привет! Я **Делорос** — ассистент сообщества «Деловая Россия».\n\n"
             "**Чем могу помочь:**\n"
@@ -225,19 +271,32 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             return
 
         chat_id = _peer_id(msg)
+        user_id = msg.sender.user_id if msg.sender else None
         username = _get_username(msg)
         atts = _attachments(msg)
         text = _text_of(msg)
         is_group = _is_group(msg)
 
-        # Пассивно сохраняем весь текст группы в лог (память/метчинг по истории)
-        if is_group and text:
-            save_message(chat_id, username, text)
-
-        # В группе бот реагирует (на текст И на вложения) только по @упоминанию /
-        # reply. В личке — всегда. Это убирает «реакцию на каждый файл» в чате.
-        if is_group and not _is_mentioned(msg):
+        # Контакт (подтверждение телефона) — только в личке
+        contact = next((a for a in atts if getattr(a, "type", None) == AttachmentType.CONTACT), None)
+        if contact is not None and not is_group:
+            await _handle_contact(event, contact, user_id)
             return
+
+        if is_group:
+            # Пассивно сохраняем весь текст группы в лог (память/метчинг по истории)
+            if text:
+                save_message(chat_id, username, text)
+            # В группе реагируем (на текст И на вложения) только по @упоминанию/reply
+            if not _is_mentioned(msg):
+                return
+        else:
+            # Личка: доступ только подтверждённым участникам клуба
+            if not is_verified(user_id):
+                await event.message.answer(
+                    NEED_PHONE_PROMPT, parse_mode=ParseMode.MARKDOWN, attachments=[_contact_kb()]
+                )
+                return
 
         caption = _clean_mention(text) if is_group else text
 
@@ -276,6 +335,22 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
 
 
 # ---------- обработка вложений ----------
+
+async def _handle_contact(event: MessageCreated, contact, user_id):
+    """Сверяет присланный телефон с реестром членов клуба."""
+    phone = _extract_phone(contact)
+    member = find_member_by_phone(phone) if phone else None
+    if member and user_id is not None:
+        mark_verified(user_id, normalize_phone(phone), member["name"])
+        await event.message.answer(
+            f"Узнал тебя, **{member['name']}**! Добро пожаловать в сообщество «Деловая Россия». 🤝\n\n"
+            "Давай соберу твой профиль, чтобы находить тебе полезные связи. "
+            "Расскажи в двух словах — чем ты занимаешься?",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    else:
+        await event.message.answer(NOT_IN_ROSTER, parse_mode=ParseMode.MARKDOWN)
+
 
 async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, username: str):
     text = (getattr(audio, "transcription", None) or "").strip()
