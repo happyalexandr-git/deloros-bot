@@ -51,13 +51,33 @@ def load_roster() -> list[dict]:
         if len(cells) < 2:
             continue
         name, phone = cells[0], cells[1]
+        added = cells[2] if len(cells) >= 3 else ""
         # пропускаем заголовок и разделитель таблицы
         if name.lower() in ("фио", "name") or set(name) <= set("-: "):
             continue
         if not phone or set(phone) <= set("-: "):
             continue
-        rows.append({"name": name, "phone": normalize_phone(phone), "phone_raw": phone})
+        rows.append({"name": name, "phone": normalize_phone(phone), "phone_raw": phone, "added": added})
     return rows
+
+
+def _write_all(entries: list[dict]) -> None:
+    """Перезаписывает roster.md из списка записей (header + строки таблицы)."""
+    lines = [ROSTER_TEMPLATE.rstrip()]
+    for e in entries:
+        lines.append(f"| {e['name']} | {e['phone']} | {e.get('added', '')} |")
+    ROSTER_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def delete_member(phone: str) -> bool:
+    """Удаляет члена клуба по телефону. False если такого не было."""
+    norm = normalize_phone(phone)
+    entries = load_roster()
+    kept = [e for e in entries if e["phone"] != norm]
+    if len(kept) == len(entries):
+        return False
+    _write_all(kept)
+    return True
 
 
 def find_member_by_phone(phone: str) -> dict | None:

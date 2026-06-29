@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Обзор</h1>
+<div class="grid">
+  <div class="metric"><div class="l">В реестре</div><div class="n">{{ total }}</div></div>
+  <div class="metric"><div class="l">Подтвердили телефон</div><div class="n">{{ confirmed }}</div></div>
+  <div class="metric"><div class="l">Профилей собрано</div><div class="n">{{ profiles }}</div></div>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <span style="font-weight:500">Последние добавленные</span>
+    <a href="/roster">весь реестр →</a>
+  </div>
+  {% if recent %}
+    {% for m in recent %}
+    <div class="row">
+      <span>{{ m.name }}</span>
+      <span class="muted">{{ m.phone }}</span>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Реестр пуст. Добавь участников на вкладке «Реестр».</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вход — Делорос</title>
+<style>
+  :root{--bg:#f7f7f5;--surface:#fff;--text:#1f1f1d;--muted:#6b6b66;--border:#e6e5e0;--accent:#185fa5;--danger:#a32d2d;--danger-bg:#fcebeb;}
+  @media (prefers-color-scheme:dark){:root{--bg:#1a1a18;--surface:#242422;--text:#ececea;--muted:#9a9a93;--border:#34332f;--accent:#85b7eb;--danger:#f09595;--danger-bg:#791f1f;}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex;min-height:100vh;align-items:center;justify-content:center}
+  .box{background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:28px;width:320px}
+  h1{font-size:18px;font-weight:500;margin:0 0 4px}
+  p.sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
+  input{height:38px;width:100%;padding:0 12px;border:0.5px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+  button{height:40px;width:100%;margin-top:18px;border:none;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
+  .err{background:var(--danger-bg);color:var(--danger);font-size:13px;padding:9px 12px;border-radius:8px;margin-bottom:14px}
+</style>
+</head>
+<body>
+  <form class="box" method="post" action="/login">
+    <h1>Делорос — админ-панель</h1>
+    <p class="sub">Управление реестром членов клуба</p>
+    {% if error %}<div class="err">Неверный логин или пароль</div>{% endif %}
+    <label for="u">Логин</label>
+    <input id="u" name="username" type="text" autocomplete="username" autofocus>
+    <label for="p">Пароль</label>
+    <input id="p" name="password" type="password" autocomplete="current-password">
+    <button type="submit">Войти</button>
+  </form>
+</body>
+</html>

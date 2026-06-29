@@ -25,6 +25,7 @@
 - `agent.py` — агентный цикл OpenAI (gpt-4o, function calling), `SYSTEM_PROMPT`, `TOOLS`
 - `scheduler.py` — фоновая проверка напоминаний
 - `tools/` — инструменты агента (включая `embeddings.py` — семантический поиск)
+- `panel/` — админ-панель (Фаза 2): FastAPI + Jinja2, отдельный сервис `deloros-panel`. Вкладки Обзор/Реестр/О боте, логин+пароль (один админ), вход только из корп-сети. Управляет `roster.md`, общим с ботом.
 
 ### Доступ по телефону (Фаза 1)
 - В **личке** доступ только участникам клуба. Заход по ссылке/`/start` → бот просит «📞 Поделиться номером» (`RequestContactButton`).
@@ -90,11 +91,18 @@ sudo systemctl enable --now deloros-bot
 journalctl -u deloros-bot -f  # проверить запуск
 ```
 
+### Админ-панель (Фаза 2)
+Отдельный сервис `deloros-panel` (`deploy/deloros-panel.service`), uvicorn на порту 8080 (только корп-сеть). Доступ: `http://srv001:8080`, логин+пароль из `.env` (`ADMIN_USER`/`ADMIN_PASSWORD`/`PANEL_SECRET_KEY`).
+```bash
+sudo cp deploy/deloros-panel.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now deloros-panel
+```
+
 ### Обновление (как у valentin)
 ```bash
 # мак: git add . && git commit && git push
-# сервер:
-cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot
+# сервер (github с сервера может резаться корп-сетью → деплой через git-bundle по scp):
+cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot deloros-panel
 ```
 
 ## Статус

@@ -35,6 +35,11 @@ def verified_name(user_id: int | None) -> str | None:
     return _load().get(str(user_id), {}).get("name")
 
 
+def verified_phones() -> set[str]:
+    """Множество нормализованных телефонов, подтвердивших участие."""
+    return {v.get("phone", "") for v in _load().values() if v.get("phone")}
+
+
 def mark_verified(user_id: int, phone: str, name: str) -> None:
     data = _load()
     data[str(user_id)] = {

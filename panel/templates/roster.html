@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Реестр членов клуба</h1>
+
+{% if ok %}<div class="notice ok">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice err">{{ error }}</div>{% endif %}
+
+<div class="card" style="margin-bottom:18px">
+  <div style="font-weight:500;margin-bottom:10px">Добавить участника</div>
+  <form class="inline" method="post" action="/roster/add">
+    <input type="text" name="name" placeholder="Фамилия Имя Отчество" style="flex:2">
+    <input type="text" name="phone" placeholder="+7 999 123-45-67" style="flex:1">
+    <button class="primary" type="submit">Добавить</button>
+  </form>
+</div>
+
+{% if roster %}
+  <div class="muted" style="font-size:13px;margin-bottom:8px">Всего: {{ roster|length }}</div>
+  {% for m in roster %}
+  <div class="row">
+    <span style="flex:2">{{ m.name }}</span>
+    <span class="muted" style="flex:1">{{ m.phone }}</span>
+    <span style="width:110px">
+      {% if m.confirmed %}<span class="badge ok">подтверждён</span>
+      {% else %}<span class="badge wait">ожидает</span>{% endif %}
+    </span>
+    <form class="inline" method="post" action="/roster/delete"
+          onsubmit="return confirm('Удалить {{ m.name }} из реестра?')">
+      <input type="hidden" name="phone" value="{{ m.phone }}">
+      <button class="link" type="submit">удалить</button>
+    </form>
+  </div>
+  {% endfor %}
+{% else %}
+  <p class="muted">Реестр пуст — добавь первого участника выше.</p>
+{% endif %}
+{% endblock %}
