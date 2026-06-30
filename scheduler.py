@@ -13,12 +13,18 @@ async def run_reminder_loop(bot: Bot) -> None:
         try:
             due = get_due_reminders()
             for reminder in due:
-                await bot.send_message(
-                    chat_id=reminder["chat_id"],
-                    text=f"🔔 Напоминание:\n\n{reminder['text']}",
-                )
+                text = f"🔔 Напоминание:\n\n{reminder['text']}"
+                targets = reminder.get("targets") or []
+                if targets:
+                    for uid in targets:
+                        try:
+                            await bot.send_message(user_id=uid, text=text)
+                        except Exception as e:
+                            logger.error(f"Не доставлено user_id={uid}: {e}")
+                else:
+                    await bot.send_message(chat_id=reminder["chat_id"], text=text)
                 mark_sent(reminder["id"])
-                logger.info(f"Отправлено напоминание {reminder['id']}")
+                logger.info(f"Отправлено напоминание {reminder['id']} ({len(targets) or 'чат'})")
         except Exception as e:
             logger.error(f"Ошибка планировщика: {e}")
 

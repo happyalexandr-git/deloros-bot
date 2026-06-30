@@ -30,9 +30,9 @@
   <form class="box" method="post" action="/login">
     <img class="logo" src="/static/logo-5.svg" alt="Деловая Россия">
     <p class="region">Иркутская область · админ-панель</p>
-    {% if error %}<div class="err">Неверный логин или пароль</div>{% endif %}
-    <label for="u">Логин</label>
-    <input id="u" name="username" type="text" autocomplete="username" autofocus>
+    {% if error %}<div class="err">Неверный телефон или пароль, либо нет прав админа</div>{% endif %}
+    <label for="u">Телефон</label>
+    <input id="u" name="phone" type="text" inputmode="tel" placeholder="+7 902 566-05-05" autofocus>
     <label for="p">Пароль</label>
     <input id="p" name="password" type="password" autocomplete="current-password">
     <button type="submit">Войти</button>

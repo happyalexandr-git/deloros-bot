@@ -19,10 +19,12 @@ def _save(reminders: list[dict]) -> None:
     REMINDERS_PATH.write_text(json.dumps(reminders, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def add_reminder(chat_id: int, text: str, send_at: str) -> str:
+def add_reminder(chat_id: int, text: str, send_at: str, targets: list[int] | None = None) -> str:
     """
     Сохраняет напоминание.
     send_at — строка формата 'YYYY-MM-DD HH:MM' в UTC+8 (Иркутск).
+    targets — список user_id для адресной отправки в личку; если None,
+    напоминание уходит в исходный чат (chat_id).
     """
     try:
         dt = datetime.strptime(send_at, "%Y-%m-%d %H:%M")
@@ -33,12 +35,14 @@ def add_reminder(chat_id: int, text: str, send_at: str) -> str:
     reminders.append({
         "id": str(uuid.uuid4())[:8],
         "chat_id": chat_id,
+        "targets": targets or [],
         "text": text,
         "send_at": dt.isoformat(),
         "sent": False,
     })
     _save(reminders)
-    return f"Напоминание сохранено на {send_at} (Иркутск UTC+8)."
+    where = f"{len(targets)} участникам в личку" if targets else "в чат"
+    return f"Напоминание сохранено на {send_at} (Иркутск UTC+8), отправлю {where}."
 
 
 def get_due_reminders() -> list[dict]:

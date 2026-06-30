@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+  <a href="/roster" class="muted" style="font-size:14px">← Реестр</a>
+</div>
+<h1>{{ m.name }}
+  {% if confirmed %}<span class="badge ok" style="font-size:12px;vertical-align:middle">подтверждён</span>
+  {% else %}<span class="badge wait" style="font-size:12px;vertical-align:middle">ожидает</span>{% endif %}
+</h1>
+<p class="muted" style="margin-top:-10px">{{ m.phone }}</p>
+
+<div class="grid" style="grid-template-columns:repeat(4,1fr)">
+  <div class="metric"><div class="l">Запросов к боту</div><div class="n">{{ usage.requests }}</div></div>
+  <div class="metric"><div class="l">Токенов</div><div class="n">{{ "{:,}".format(usage.input + usage.output) }}</div></div>
+  <div class="metric"><div class="l">Расходы, $</div><div class="n">{{ usage.total_cost }}</div></div>
+  <div class="metric"><div class="l">Документов</div><div class="n">{{ docs|length }}</div></div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="font-weight:500;margin-bottom:8px">Профиль (база знаний)</div>
+  {% if profile %}
+    <div style="white-space:pre-wrap;font-size:14px;line-height:1.6">{{ profile }}</div>
+  {% else %}
+    <p class="muted">Профиль ещё не собран ботом (участник не прошёл онбординг).</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="font-weight:500;margin-bottom:8px">Расходы</div>
+  <div style="font-size:14px">
+    GPT: {{ "{:,}".format(usage.input + usage.output) }} токенов → <b>${{ usage.gpt_cost }}</b>
+    {% if usage.voice_sec %}· Голос: {{ usage.voice_sec }}с → <b>${{ usage.whisper_cost }}</b>{% endif %}
+    · Итого: <b>${{ usage.total_cost }}</b>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="font-weight:500;margin-bottom:8px">Документы участника</div>
+  {% if docs %}
+    {% for d in docs %}
+    <div class="row"><span>{{ d.name }}</span><span class="muted">{{ d.uploaded }}</span></div>
+    {% endfor %}
+  {% else %}<p class="muted">Документов не загружал.</p>{% endif %}
+</div>
+
+<div class="card">
+  <div style="font-weight:500;margin-bottom:8px">Активность и запросы</div>
+  <p style="font-size:14px;margin:0 0 8px">Сообщений в чате: <b>{{ activity.count }}</b>{% if activity.last %} · последнее: «{{ activity.last[:120] }}»{% endif %}</p>
+  {% if activity.requests %}
+    <div class="muted" style="font-size:13px;margin-top:8px">Ищет:</div>
+    {% for r in activity.requests %}<div class="row" style="font-size:13px">{{ r[:160] }}</div>{% endfor %}
+  {% endif %}
+  {% if activity.offers %}
+    <div class="muted" style="font-size:13px;margin-top:8px">Предлагает:</div>
+    {% for o in activity.offers %}<div class="row" style="font-size:13px">{{ o[:160] }}</div>{% endfor %}
+  {% endif %}
+  {% if not activity.requests and not activity.offers %}
+    <p class="muted" style="font-size:13px">Запросов «ищу/предлагаю» пока не найдено.</p>
+  {% endif %}
+</div>
+{% endblock %}

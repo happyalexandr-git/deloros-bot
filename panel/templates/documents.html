@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Документы участников</h1>
+{% if docs %}
+  <div class="muted" style="font-size:13px;margin-bottom:8px">Всего: {{ docs|length }}</div>
+  {% for d in docs %}
+  <div class="row">
+    <span style="flex:2">{{ d.name }}</span>
+    <span class="muted" style="flex:1">{{ d.by }}</span>
+    <span class="muted" style="width:120px;text-align:right">{{ d.uploaded }}</span>
+  </div>
+  {% endfor %}
+{% else %}
+  <p class="muted">Участники пока не загружали документов.</p>
+{% endif %}
+{% endblock %}

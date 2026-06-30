@@ -9,7 +9,7 @@
   <div style="font-weight:500;margin-bottom:10px">Добавить участника</div>
   <form class="inline" method="post" action="/roster/add">
     <input type="text" name="name" placeholder="Фамилия Имя Отчество" style="flex:2">
-    <input type="text" name="phone" placeholder="+7 999 123-45-67" style="flex:1">
+    <input type="text" name="phone" placeholder="+7 902 566-05-05" style="flex:1">
     <button class="primary" type="submit">Добавить</button>
   </form>
 </div>
@@ -17,18 +17,40 @@
 {% if roster %}
   <div class="muted" style="font-size:13px;margin-bottom:8px">Всего: {{ roster|length }}</div>
   {% for m in roster %}
-  <div class="row">
-    <span style="flex:2">{{ m.name }}</span>
-    <span class="muted" style="flex:1">{{ m.phone }}</span>
-    <span style="width:110px">
-      {% if m.confirmed %}<span class="badge ok">подтверждён</span>
-      {% else %}<span class="badge wait">ожидает</span>{% endif %}
-    </span>
-    <form class="inline" method="post" action="/roster/delete"
-          onsubmit="return confirm('Удалить {{ m.name }} из реестра?')">
-      <input type="hidden" name="phone" value="{{ m.phone }}">
-      <button class="link" type="submit">удалить</button>
-    </form>
+  <div class="card" style="margin-bottom:10px;padding:12px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <a href="/member/{{ m.token }}" style="flex:2;font-weight:500">{{ m.name }}</a>
+      <span class="muted" style="flex:1">{{ m.phone }}</span>
+      <span style="width:104px">
+        {% if m.confirmed %}<span class="badge ok">подтверждён</span>
+        {% else %}<span class="badge wait">ожидает</span>{% endif %}
+      </span>
+      <span style="width:70px">
+        {% if m.is_admin %}<span class="badge" style="color:var(--accent-deep);background:var(--accent-bg)">админ</span>{% endif %}
+      </span>
+      <form class="inline" method="post" action="/roster/delete"
+            onsubmit="return confirm('Удалить {{ m.name }} из реестра?')">
+        <input type="hidden" name="phone" value="{{ m.phone }}">
+        <button class="link" type="submit">удалить</button>
+      </form>
+    </div>
+    <div style="margin-top:10px;border-top:1px solid var(--cardb);padding-top:10px;display:flex;align-items:center;gap:10px">
+      <span class="muted" style="font-size:13px;width:62px">Админ</span>
+      {% if m.is_admin %}
+        <span style="font-size:13px">Доступ к панели включён</span>
+        <form class="inline" method="post" action="/roster/admin" style="margin-left:auto">
+          <input type="hidden" name="phone" value="{{ m.phone }}">
+          <button class="link" type="submit" style="color:var(--muted)">снять права</button>
+        </form>
+      {% else %}
+        <form class="inline" method="post" action="/roster/admin" style="margin-left:auto">
+          <input type="hidden" name="phone" value="{{ m.phone }}">
+          <input type="hidden" name="make_admin" value="1">
+          <input type="password" name="password" placeholder="пароль для входа (мин. 6)" style="width:230px">
+          <button type="submit">Сделать админом</button>
+        </form>
+      {% endif %}
+    </div>
   </div>
   {% endfor %}
 {% else %}

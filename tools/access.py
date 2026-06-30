@@ -40,11 +40,31 @@ def verified_phones() -> set[str]:
     return {v.get("phone", "") for v in _load().values() if v.get("phone")}
 
 
-def mark_verified(user_id: int, phone: str, name: str) -> None:
+def mark_verified(user_id: int, phone: str, name: str, username: str | None = None) -> None:
     data = _load()
     data[str(user_id)] = {
         "phone": phone,
         "name": name,
+        "username": username or "",
         "verified_at": datetime.now(timezone.utc).isoformat(),
     }
     _save(data)
+
+
+def phone_of(user_id: int | None) -> str | None:
+    if user_id is None:
+        return None
+    return _load().get(str(user_id), {}).get("phone")
+
+
+def by_phone(phone: str) -> dict | None:
+    """Возвращает запись подтверждённого участника по телефону (user_id, name, username)."""
+    for uid, v in _load().items():
+        if v.get("phone") == phone:
+            return {"user_id": int(uid), **v}
+    return None
+
+
+def all_verified() -> list[dict]:
+    """Все подтверждённые: [{user_id, phone, name, username}]."""
+    return [{"user_id": int(uid), **v} for uid, v in _load().items()]

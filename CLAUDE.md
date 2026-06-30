@@ -25,7 +25,7 @@
 - `agent.py` — агентный цикл OpenAI (gpt-4o, function calling), `SYSTEM_PROMPT`, `TOOLS`
 - `scheduler.py` — фоновая проверка напоминаний
 - `tools/` — инструменты агента (включая `embeddings.py` — семантический поиск)
-- `panel/` — админ-панель (Фаза 2): FastAPI + Jinja2, отдельный сервис `deloros-panel`. Вкладки Обзор/Реестр/О боте, логин+пароль (один админ), вход только из корп-сети. Управляет `roster.md`, общим с ботом.
+- `panel/` — админ-панель (FastAPI + Jinja2, сервис `deloros-panel`, стиль Steep, логотип). Вкладки: Обзор / Реестр / Документы / О боте + страница участника (`/member/{phone}`: профиль, расходы, документы, активность). Вход **по телефону+паролю** для участников с галочкой «админ» (`tools/admins.py`, хеш pbkdf2, `admins.json` вне git). `panel/data.py` агрегирует расходы (usage.jsonl), документы, активность (chat_logs) по участнику. Только из корп-сети, порт 8087.
 
 ### Доступ по телефону (Фаза 1)
 - В **личке** доступ только участникам клуба. Заход по ссылке/`/start` → бот просит «📞 Поделиться номером» (`RequestContactButton`).
@@ -65,7 +65,8 @@ Markdown в `knowledge_base/members/`, фронтматтер как в valentin
 | `get_chat_log` / `search_chat_log` | `tools/chat_log.py` | История чата, поиск «кто что искал/предлагал» |
 | `web_search` | `tools/web_search.py` | Веб-поиск (Tavily) |
 | `get_news` | `tools/news_rss.py` | Новости RSS |
-| `list_reminders` / `schedule_message` | `tools/reminder.py` | Напоминания |
+| `list_reminders` / `schedule_message` | `tools/reminder.py` | Напоминания (Иркутск UTC+8); адресные уведомления в личку через `targets` |
+| `notify_participants` | `agent.py` + `tools/reminder.py` | Уведомить участников о мероприятии (в личку, в нужное время). **Только админ** (`tools/admins.py`); target='all' или имя/телефон |
 
 ## Хранилища данных
 - `knowledge_base/` — KB (markdown), главная папка `members/`. **Рантайм-данные вне git** (профили, `INDEX.md`, `embeddings_cache.json` — в `.gitignore`; `INDEX.md` самовосстанавливается из шаблона в `kb_save.py`).

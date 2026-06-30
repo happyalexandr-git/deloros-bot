@@ -21,7 +21,12 @@ from tools.chat_log import save_message, get_chat_log
 from tools.kb_save import save_to_kb
 from tools.doc_processor import process_document
 from tools.roster import find_member_by_phone, normalize_phone
-from tools.access import is_verified, mark_verified, verified_name
+from tools.access import is_verified, mark_verified, verified_name, phone_of
+from tools import admins
+
+
+def _is_admin_uid(user_id) -> bool:
+    return admins.is_admin(phone_of(user_id) or "")
 
 UPLOADS_PATH = Path(__file__).parent / "uploads"
 UPLOADS_PATH.mkdir(exist_ok=True)
@@ -257,6 +262,7 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             username=username,
             user_message=f"Сделай саммари последних сообщений чата:\n\n{log}",
             chat_type=str(msg.recipient.chat_type),
+            is_admin=_is_admin_uid(msg.sender.user_id if msg.sender else None),
         )
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
 
@@ -328,6 +334,7 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
                 username=username,
                 user_message=clean_text,
                 chat_type=str(msg.recipient.chat_type),
+                is_admin=_is_admin_uid(user_id),
             )
             await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
@@ -342,7 +349,8 @@ async def _handle_contact(event: MessageCreated, contact, user_id):
     phone = _extract_phone(contact)
     member = find_member_by_phone(phone) if phone else None
     if member and user_id is not None:
-        mark_verified(user_id, normalize_phone(phone), member["name"])
+        uname = event.message.sender.username if event.message.sender else None
+        mark_verified(user_id, normalize_phone(phone), member["name"], uname)
         await event.message.answer(
             f"Узнал тебя, **{member['name']}**! Добро пожаловать в сообщество «Деловая Россия». 🤝\n\n"
             "Давай соберу твой профиль, чтобы находить тебе полезные связи. "
@@ -391,6 +399,7 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
             username=username,
             user_message=text,
             chat_type=str(event.message.recipient.chat_type),
+            is_admin=_is_admin_uid(event.message.sender.user_id if event.message.sender else None),
         )
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
@@ -477,6 +486,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             username=username,
             user_message=agent_msg,
             chat_type=str(event.message.recipient.chat_type),
+            is_admin=_is_admin_uid(event.message.sender.user_id if event.message.sender else None),
         )
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:

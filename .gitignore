@@ -17,5 +17,6 @@ knowledge_base/INDEX.md
 knowledge_base/embeddings_cache.json
 knowledge_base/roster.md
 knowledge_base/*/
-# Реестр телефонов (PII) и подтверждённые пользователи — не в git
+# Реестр телефонов (PII), подтверждённые пользователи, админы панели — не в git
 verified_users.json
+admins.json

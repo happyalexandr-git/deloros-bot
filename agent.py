@@ -29,6 +29,7 @@ SYSTEM_PROMPT = """Ты — Делорос, ассистент чата сооб
 2. Онбординг участника. Когда появляется новый участник или человек просит «расскажи обо мне» / «добавь меня» — НЕ проси написать о себе текстом. Проведи короткое интервью: задавай СТРОГО по одному вопросу за раз, дожидаясь ответа, не вываливай список вопросов сразу. Выясни: чем занимаешься (компания, роль); компетенции и опыт; чем можешь быть полезен сообществу; что сейчас ищешь; зачем пришёл в сообщество (цели, мотивация); интересы вне бизнеса и хобби (для неформальных связей). Контакт НЕ спрашивай — у тебя уже есть аккаунт человека в MAX (его username из сообщения), просто зафиксируй его в профиле. Участник может прислать резюме, биографию или рассказ о себе файлом (PDF/DOCX/TXT) или голосовым — тогда извлеки из присланного максимум для профиля и переспроси ТОЛЬКО недостающее, не задавай повторно то, что уже есть в тексте. Собрав данные — сохрани профиль через save_to_kb(category="member"). Цель — собрать максимум полезного, чтобы человек не сочинял о себе сам.
 3. Поиск компетенций и метчинг запросов. Замечаешь в чате «ищу …» и «могу предложить …». Сводишь спрос с предложением: ищешь подходящих людей в профилях (search_kb) и в истории чата (search_chat_log) и подсказываешь, кто кому может быть полезен. Важные запросы можешь сохранять через save_to_kb(category="request").
 4. Общий ассистент чата. Отвечаешь на вопросы, делаешь саммари обсуждений, веб-поиск, новости, напоминания, разбор документов.
+5. Уведомления о мероприятиях. Когда АДМИНИСТРАТОР сообщает о мероприятии и просит уведомить участников — используй notify_participants (target='all' для всех или имя/телефон конкретного участника, обязательно укажи дату-время send_at по Иркутску UTC+8). Бот сам напомнит адресатам в личку в нужное время. Если просит НЕ админ — вежливо откажи: рассылку участникам делает только администратор. Если не указано время — переспроси когда напомнить.
 
 Как работает память:
 - Все сообщения чата автоматически сохраняются в лог (chat_log) — ты ВСЕГДА имеешь доступ к истории. Никогда не говори, что не видел сообщений.
@@ -200,6 +201,28 @@ _TOOL_DEFS = [
             "required": ["text", "send_at"],
         },
     },
+    {
+        "name": "notify_participants",
+        "description": "Запланировать уведомление участникам клуба в ЛИЧКУ о мероприятии/событии (бот напомнит в нужное время). ТОЛЬКО для администраторов. Используй, когда админ просит уведомить кого-то или всех о встрече/событии.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "Текст уведомления участникам",
+                },
+                "send_at": {
+                    "type": "string",
+                    "description": "Когда отправить: 'YYYY-MM-DD HH:MM' по Иркутску (UTC+8)",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "'all' — всем участникам; либо имя или телефон конкретного участника",
+                },
+            },
+            "required": ["text", "send_at", "target"],
+        },
+    },
 ]
 
 # Модель OpenAI и обёртка tool-схем в формат function-calling
@@ -252,7 +275,30 @@ def _trim_history(history: list[dict]) -> list[dict]:
     return trimmed
 
 
-def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0) -> str:
+def _resolve_targets(target: str) -> tuple[list[int], str]:
+    """Превращает спецификацию получателя в список user_id для личных уведомлений."""
+    from tools.access import all_verified, by_phone
+    from tools.roster import load_roster, find_member_by_phone
+
+    t = (target or "").strip().lower()
+    if t in ("all", "все", "всем", "каждому", "everyone", "всех"):
+        ids = [v["user_id"] for v in all_verified()]
+        return ids, "всем участникам"
+    member = find_member_by_phone(target)
+    if not member:
+        for r in load_roster():
+            if target.strip().lower() in r["name"].lower():
+                member = r
+                break
+    if not member:
+        return [], f"не нашёл участника «{target}» в реестре"
+    v = by_phone(member["phone"])
+    if not v:
+        return [], f"{member['name']} ещё не подтвердил телефон в боте — не могу написать ему в личку"
+    return [v["user_id"]], member["name"]
+
+
+def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0, is_admin: bool = False) -> str:
     if tool_name == "get_chat_log":
         return get_chat_log(chat_id=chat_id, limit=tool_input.get("limit", 100))
     if tool_name == "search_chat_log":
@@ -290,6 +336,19 @@ def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0) -> str:
             text=tool_input["text"],
             send_at=tool_input["send_at"],
         )
+    if tool_name == "notify_participants":
+        if not is_admin:
+            return "Уведомлять других участников может только администратор клуба."
+        ids, who = _resolve_targets(tool_input["target"])
+        if not ids:
+            return who
+        result = add_reminder(
+            chat_id=chat_id,
+            text=tool_input["text"],
+            send_at=tool_input["send_at"],
+            targets=ids,
+        )
+        return f"{result} Получатели: {who}."
     return f"Неизвестный инструмент: {tool_name}"
 
 
@@ -298,6 +357,7 @@ async def run_agent(
     username: str,
     user_message: str,
     chat_type: str = "unknown",
+    is_admin: bool = False,
 ) -> str:
     """
     Запускает агентный цикл: отправляет запрос в OpenAI,
@@ -350,7 +410,7 @@ async def run_agent(
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                result = _execute_tool(tc.function.name, args, chat_id=chat_id)
+                result = _execute_tool(tc.function.name, args, chat_id=chat_id, is_admin=is_admin)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,

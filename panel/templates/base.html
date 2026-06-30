@@ -67,9 +67,10 @@
       <div class="tabs">
         <a class="{% if tab=='overview' %}active{% endif %}" href="/overview">Обзор</a>
         <a class="{% if tab=='roster' %}active{% endif %}" href="/roster">Реестр</a>
+        <a class="{% if tab=='documents' %}active{% endif %}" href="/documents">Документы</a>
         <a class="{% if tab=='about' %}active{% endif %}" href="/about">О боте</a>
       </div>
-      <span class="right">Александр · <a href="/logout">выход</a></span>
+      <span class="right">{{ admin_name }} · <a href="/logout">выход</a></span>
     </nav>
   </div>
 </header>
