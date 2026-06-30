@@ -12,6 +12,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -32,6 +33,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("PANEL_SECRET_KEY", secrets.token_hex(32)),
 )
+app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 
 def _authed(request: Request) -> bool:

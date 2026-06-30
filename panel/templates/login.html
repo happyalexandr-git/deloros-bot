@@ -3,26 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Вход — Делорос</title>
+<title>Вход — Деловая Россия · Иркутская область</title>
 <style>
-  :root{--bg:#f7f7f5;--surface:#fff;--text:#1f1f1d;--muted:#6b6b66;--border:#e6e5e0;--accent:#185fa5;--danger:#a32d2d;--danger-bg:#fcebeb;}
-  @media (prefers-color-scheme:dark){:root{--bg:#1a1a18;--surface:#242422;--text:#ececea;--muted:#9a9a93;--border:#34332f;--accent:#85b7eb;--danger:#f09595;--danger-bg:#791f1f;}}
+  :root{--bg:#eef1f7;--text:#1f3556;--muted:#7186a3;--cardb:#e4e9f1;--accent:#2f63b0;--danger:#a32d2d;--danger-bg:#fbe9e9;}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    display:flex;min-height:100vh;align-items:center;justify-content:center}
-  .box{background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:28px;width:320px}
-  h1{font-size:18px;font-weight:500;margin:0 0 4px}
-  p.sub{color:var(--muted);font-size:13px;margin:0 0 18px}
-  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
-  input{height:38px;width:100%;padding:0 12px;border:0.5px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
-  button{height:40px;width:100%;margin-top:18px;border:none;border-radius:8px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
-  .err{background:var(--danger-bg);color:var(--danger);font-size:13px;padding:9px 12px;border-radius:8px;margin-bottom:14px}
+    display:flex;min-height:100vh;align-items:center;justify-content:center;position:relative;overflow:hidden}
+  .wavebg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+  .box{position:relative;z-index:1;background:#fff;border:1px solid var(--cardb);border-radius:16px;
+    box-shadow:0 8px 30px rgba(30,55,100,.10);padding:30px;width:340px}
+  .logo{height:26px;display:block;margin-bottom:6px}
+  .region{font-size:13px;color:var(--muted);margin:0 0 20px}
+  label{display:block;font-size:13px;color:var(--muted);margin:14px 0 5px}
+  input{height:40px;width:100%;padding:0 13px;border:1px solid var(--cardb);border-radius:10px;background:#fff;color:var(--text);font:inherit}
+  input:focus{outline:none;border-color:var(--accent)}
+  button{height:42px;width:100%;margin-top:20px;border:none;border-radius:10px;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
+  .err{background:var(--danger-bg);color:var(--danger);font-size:13px;padding:9px 12px;border-radius:10px;margin-bottom:14px}
 </style>
 </head>
 <body>
+  <svg class="wavebg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMin slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M0,200 C360,110 760,300 1440,160 L1440,0 L0,0 Z" fill="#e4ebf6"/>
+    <path d="M0,320 C420,230 820,360 1440,260" fill="none" stroke="#d6e1f2" stroke-width="3"/>
+    <path d="M0,410 C460,310 900,450 1440,350" fill="none" stroke="#dde6f4" stroke-width="3"/>
+  </svg>
   <form class="box" method="post" action="/login">
-    <h1>Делорос — админ-панель</h1>
-    <p class="sub">Управление реестром членов клуба</p>
+    <img class="logo" src="/static/logo-5.svg" alt="Деловая Россия">
+    <p class="region">Иркутская область · админ-панель</p>
     {% if error %}<div class="err">Неверный логин или пароль</div>{% endif %}
     <label for="u">Логин</label>
     <input id="u" name="username" type="text" autocomplete="username" autofocus>
