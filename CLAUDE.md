@@ -92,12 +92,14 @@ sudo systemctl enable --now deloros-bot
 journalctl -u deloros-bot -f  # проверить запуск
 ```
 
-### Админ-панель (Фаза 2)
-Отдельный сервис `deloros-panel` (`deploy/deloros-panel.service`), uvicorn на порту 8080 (только корп-сеть). Доступ: `http://srv001:8087`, логин+пароль из `.env` (`ADMIN_USER`/`ADMIN_PASSWORD`/`PANEL_SECRET_KEY`).
+### Админ-панель
+Отдельный сервис `deloros-panel` (`deploy/deloros-panel.service`), uvicorn на **порту 8087** (8080 на srv001 занят другим сервисом; только корп-сеть). Доступ: `http://srv001:8087`. **Вход по телефону+паролю** для участников-админов (`tools/admins.py`, `admins.json` вне git), НЕ из `.env`. Бутстрап первого админа на сервере:
 ```bash
+.venv/bin/python -c "from tools.admins import set_admin; set_admin('+79025660505','ПАРОЛЬ')"
 sudo cp deploy/deloros-panel.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now deloros-panel
 ```
+`PANEL_SECRET_KEY` — в `.env` (подпись сессий).
 
 ### Обновление (как у valentin)
 ```bash
@@ -107,7 +109,15 @@ cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot delo
 ```
 
 ## Статус
-**Развёрнут и запущен на сервере** (`srv001`, `/home/alex/deloros_bot`, systemd `deloros-bot`, `active`). Транспорт на MAX (`maxapi`), мозг — OpenAI gpt-4o (function calling), поиск по KB — семантический (эмбеддинги). Бот `@deloros_bot` (id 346102047). Ключи в `.env` на сервере: `MAX_TOKEN`, `OPENAI_API_KEY`, `TAVILY_API_KEY`. Endpoint MAX — `platform-api.max.ru`. Прогнаны локально: онбординг (текст/файл/голос), раскладка документа по категориям, семантический метчинг.
+**Развёрнут на сервере** (`srv001`, `/home/alex/deloros_bot`): сервисы `deloros-bot` и `deloros-panel` — оба `active`. Транспорт MAX (`maxapi`), мозг OpenAI gpt-4o, поиск по KB семантический (эмбеддинги). Бот `@deloros_bot` (id 346102047). Филиал — **Иркутская область** (таймзона напоминаний UTC+8 уже в `tools/reminder.py`). Ключи в `.env`: `MAX_TOKEN`, `OPENAI_API_KEY`, `TAVILY_API_KEY`, `PANEL_SECRET_KEY`. Endpoint MAX — `platform-api.max.ru`.
+
+**Сделаны Фазы 1–3:** гейт доступа по телефону (личка, реестр `roster.md`); админ-панель Steep (вход по телефону+паролю, реестр CRUD, страница участника `/member/{phone}` с профилем/расходами/документами/активностью, вкладка «Документы»); уведомления о мероприятиях (`notify_participants`, только админ → рассылка в личку в нужное время). Текущий админ панели — Александр (`+79025660505`).
+
+### Где продолжить (для следующей сессии)
+1. **Голос НЕ работает** — MAX для голосовых шлёт пустой `message_created` (без `message`/аудио, подтверждено на HTTP-уровне; не баг кода/maxapi). Кандидаты: webhook вместо long-poll, либо обращение в MAX. См. диагностику в истории.
+2. **GitHub-push в долгу** — корп-сеть режет github.com (и мак, и сервер). Коммиты `bbe578f…ceb3fc5` НЕ запушены в origin; сервер обновлялся через **git-bundle по scp** (`git bundle create /tmp/b.bundle main` → scp → `git pull --ff-only /tmp/b.bundle main`). Догнать `git push`, когда откроется доступ.
+3. **Сменить пароль админа панели** (сейчас сгенерированный).
+4. **Проактивный метчинг** — реакция на «ищу…»/«предлагаю…» без упоминания (нужны права админа боту в группе MAX + код + анти-спам).
 
 ### Принятые решения
 - **`handlers.py`** экспортирует `register_handlers(dp, bot, bot_id, bot_username)`; `main.py` берёт личность бота из `bot.get_me()`.
@@ -118,13 +128,16 @@ cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot delo
 - **Документы:** скачиваются по `attachment.payload.url` через `httpx`; агент раскладывает по категории (member/meeting/research/резюме). Сырой текст всегда сохраняется как `document` для поиска.
 - **Поиск:** семантический (`tools/embeddings.py`, gpt-эмбеддинги), порог сходства 0.2, подстрочный фолбэк при сбое OpenAI.
 - **KB вне git:** профили/INDEX/кэш векторов в `.gitignore` (приватность + чтобы рантайм-записи не конфликтовали с `git pull`). `INDEX.md` самовосстанавливается.
-- **`.env`:** `MAX_TOKEN`; `OPENAI_API_KEY` (`OPENAI_MODEL`/`OPENAI_BASE_URL`/`OPENAI_EMBED_MODEL` опц.); `PROXY_URL` — только для OpenAI.
+- **Вход в панель:** по телефону+паролю участников с галочкой «админ» (хеш pbkdf2 в `admins.json`, вне git). Не из `.env`. Бутстрап первого админа — `tools.admins.set_admin(phone, pw)`.
+- **Уведомления:** `notify_participants` (только админ) → `add_reminder(..., targets=[user_id])` → `scheduler` шлёт в личку каждому. Адресат резолвится `agent._resolve_targets` (all / имя / телефон по реестру+`verified_users`).
+- **Связка участника:** реестр (телефон) ↔ `verified_users.json` (`user_id`+`username`, пишется при верификации) ↔ профиль `members/<slug имени>.md` ↔ расходы/логи (по имени и `@username`). Агрегация — `panel/data.py`.
+- **Рантайм вне git:** `roster.md`, `verified_users.json`, `admins.json`, `INDEX.md`, `embeddings_cache.json`, `*.jsonl`.
+- **`.env`:** `MAX_TOKEN`; `OPENAI_API_KEY` (`OPENAI_MODEL`/`OPENAI_BASE_URL`/`OPENAI_EMBED_MODEL` опц.); `PANEL_SECRET_KEY`; `PROXY_URL` — только для OpenAI.
+- **Дизайн/визуализации:** по любой задаче на дизайн — Refero (https://styles.refero.design/), показывать варианты на выбор. Панель — стиль «Steep» (волновой фон, прохладная гамма), логотип `panel/static/logo-5.svg`.
 
-### Открытые вопросы / до полноценного запуска
-- [ ] **Права админа боту в группе MAX** — чтобы видел все сообщения (privacy-режим), а не только упоминания
-- [ ] Проактивный метчинг (реакция на «ищу…»/«предлагаю…» без упоминания) — код + защита от спама
+### Прочие открытые вопросы (бэклог)
+- [ ] **Права админа боту в группе MAX** — чтобы видел все сообщения (privacy-режим), а не только упоминания (нужно для проактивного метчинга и наполнения chat_log)
 - [ ] Аватар/описание бота
-- [ ] Таймзона напоминаний под филиал (по умолчанию Москва UTC+3)
 - [ ] Приватность: какие поля профиля публичны в чате, какие только админу
 - [ ] Нужен ли отдельный структурированный инструмент `save_member` вместо `save_to_kb(member)`
-- [ ] Сухой прогон на живом чате MAX: онбординг, метчинг, голос, документы
+- [ ] Сухой прогон на живом чате MAX (группа): онбординг, метчинг, документы
