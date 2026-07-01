@@ -12,9 +12,10 @@
     --ok:#2f8f6b; --ok-bg:#e1f5ee; --danger:#a32d2d; --danger-bg:#fbe9e9;
   }
   *{box-sizing:border-box}
+  html{position:relative; min-height:100%}
   body{margin:0; background:var(--bg); color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-size:15px; line-height:1.6;}
-  .wavebg{position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none}
+  .wavebg{position:absolute; inset:0; width:100%; height:100%; min-height:100vh; z-index:0; pointer-events:none}
   a{color:var(--accent); text-decoration:none}
   .wrap{max-width:860px; margin:0 auto; padding:0 18px; position:relative; z-index:1}
   header{position:relative; z-index:1}
@@ -52,10 +53,21 @@
 </style>
 </head>
 <body>
-<svg class="wavebg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMin slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <path d="M0,150 C360,70 760,230 1440,120 L1440,0 L0,0 Z" fill="#e4ebf6"/>
-  <path d="M0,260 C420,180 820,300 1440,210" fill="none" stroke="#d6e1f2" stroke-width="3"/>
-  <path d="M0,340 C460,250 900,380 1440,290" fill="none" stroke="#dde6f4" stroke-width="3"/>
+<svg class="wavebg" viewBox="0 0 1440 2240" preserveAspectRatio="xMidYMin slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <path d="M-80,190 C400,60 640,-160 1520,-420" fill="none" stroke="#c7d6ee" stroke-width="5" opacity="0.9"/>
+  <path d="M-80,270 C450,130 690,-100 1520,-340" fill="none" stroke="#dbe5f4" stroke-width="19" opacity="0.7"/>
+
+  <path d="M-80,690 C480,540 750,240 1520,-50" fill="none" stroke="#b9cced" stroke-width="5" opacity="0.9"/>
+  <path d="M-80,770 C530,620 800,320 1520,30" fill="none" stroke="#d6e1f2" stroke-width="32" opacity="0.7"/>
+  <path d="M-80,850 C560,700 850,400 1520,130" fill="none" stroke="#e4ebf6" stroke-width="54" opacity="0.8"/>
+
+  <path d="M-80,1220 C510,1120 830,830 1520,540" fill="none" stroke="#c7d6ee" stroke-width="5" opacity="0.85"/>
+  <path d="M-80,1300 C560,1200 900,910 1520,620" fill="none" stroke="#dbe5f4" stroke-width="26" opacity="0.65"/>
+
+  <path d="M-80,1730 C530,1650 900,1380 1520,1060" fill="none" stroke="#b9cced" stroke-width="4" opacity="0.8"/>
+  <path d="M-80,1810 C580,1730 950,1460 1520,1140" fill="none" stroke="#d6e1f2" stroke-width="38" opacity="0.6"/>
+
+  <path d="M-80,2210 C560,2140 960,1890 1520,1570" fill="none" stroke="#e4ebf6" stroke-width="48" opacity="0.7"/>
 </svg>
 <header>
   <div class="wrap">
