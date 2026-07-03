@@ -109,14 +109,17 @@ cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot delo
 ```
 
 ## Статус
-**Развёрнут на сервере** (`srv001`, `/home/alex/deloros_bot`): сервисы `deloros-bot` и `deloros-panel` — оба `active`. Транспорт MAX (`maxapi`), мозг OpenAI gpt-4o, поиск по KB семантический (эмбеддинги). Бот `@deloros_bot` (id 346102047). Филиал — **Иркутская область** (таймзона напоминаний UTC+8 уже в `tools/reminder.py`). Ключи в `.env`: `MAX_TOKEN`, `OPENAI_API_KEY`, `TAVILY_API_KEY`, `PANEL_SECRET_KEY`. Endpoint MAX — `platform-api.max.ru`.
+**Развёрнут на сервере** (`srv001`, `/home/alex/deloros_bot`): сервисы `deloros-bot` и `deloros-panel` — оба `active`. Транспорт MAX — **webhook** (`MAX_TRANSPORT=webhook`, приём на `https://делорос.рф/max-webhook` → NPM-балансировщик `temp-balancer` → srv001:8088; голосовые работают только так, по long-poll MAX аудио не присылает). Мозг OpenAI gpt-4o, поиск по KB семантический (эмбеддинги). Бот `@deloros_bot` (id 346102047). Филиал — **Иркутская область** (таймзона напоминаний UTC+8 уже в `tools/reminder.py`). Ключи в `.env`: `MAX_TOKEN`, `OPENAI_API_KEY`, `TAVILY_API_KEY`, `PANEL_SECRET_KEY`, `MAX_WEBHOOK_SECRET`. Endpoint MAX — `platform-api.max.ru`.
+
+**Публичный домен:** `делорос.рф` (`xn--d1acsmali.xn--p1ai`, IP 185.242.118.119) → Nginx Proxy Manager на `temp-balancer.prod.aptk.local` (домен вводить в punycode!) → панель srv001:8087 и вебхук srv001:8088 (Custom Location `/max-webhook`). Сертификат Let's Encrypt, продление автоматическое (порт 80 должен оставаться открыт снаружи для ACME).
 
 **Сделаны Фазы 1–3:** гейт доступа по телефону (личка, реестр `roster.md`); админ-панель Steep (вход по телефону+паролю, реестр CRUD, страница участника `/member/{phone}` с профилем/расходами/документами/активностью, вкладка «Документы»); уведомления о мероприятиях (`notify_participants`, только админ → рассылка в личку в нужное время). Текущий админ панели — Александр (`+79025660505`).
 
 ### Где продолжить (для следующей сессии)
-1. **Голос НЕ работает** — MAX для голосовых шлёт пустой `message_created` (без `message`/аудио, подтверждено на HTTP-уровне; не баг кода/maxapi). Кандидаты: webhook вместо long-poll, либо обращение в MAX. См. диагностику в истории.
-2. **Сменить пароль админа панели** (сейчас сгенерированный при бутстрапе).
-3. **Проактивный метчинг** — реакция на «ищу…»/«предлагаю…» без упоминания (нужны права админа боту в группе MAX + код + анти-спам).
+1. **Проактивный метчинг** — реакция на «ищу…»/«предлагаю…» без упоминания (нужны права админа боту в группе MAX + код + анти-спам).
+2. **Убрать диагностические патчи с сервера** — на srv001 в истории git остались 2 локальных коммита с логированием сырых событий (`[RAW]`/`[DIAG]` в main.py и handlers.py); голос починен, логи можно снять.
+
+Решено в сессии 2026-07-03: голосовые работают (перевод на webhook — MAX не присылает аудио по long-poll, подтверждено сравнением с рабочим ботом vAptekeMaxBot); пароль админа панели сменён; домен делорос.рф подключён (NPM, LE-сертификат); в реестре — правка ФИО, дата регистрации; PII-номер убран из placeholder'ов.
 
 Примечание по деплою: GitHub-доступ нестабилен из корп-сети (периодически режется и с мака, и с сервера). Когда `git push`/`git pull` не проходит — деплой через **git-bundle по scp**: `git bundle create /tmp/b.bundle main` → `scp` на srv001 → `git pull --ff-only /tmp/b.bundle main` → рестарт сервисов. На момент последнего апдейта origin синхронизирован.
 
@@ -125,7 +128,8 @@ cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot delo
 - **Endpoint MAX:** `platform-api.max.ru` (серт Let's Encrypt). `platform-api2.max.ru` требует российский УЦ Минцифры (нет в certifi) — НЕ используем. Переопределяется `MAX_API_URL`.
 - **Онбординг:** триггер — `BotStarted` (нажатие «Начать») + `/start` + @упоминание.
 - **Упоминание в группе:** `@username` в тексте, `USER_MENTION` в `body.markup` по `user_id` бота, либо reply на бота.
-- **Голос:** MAX в `message_created` присылает только ссылку на аудио (поле `transcription` обычно пустое). `_handle_audio`: если `transcription` есть — берём её; иначе скачиваем по `payload.url` и распознаём через Whisper (`tools/voice_transcribe.py`, `whisper-1`).
+- **Голос:** работает ТОЛЬКО на webhook-транспорте — по long-poll MAX шлёт пустой `message_created` без аудио (подтверждено на HTTP-уровне и сравнением с vAptekeMaxBot). `_handle_audio`: если `transcription` есть — берём её; иначе скачиваем по `payload.url` и распознаём через Whisper (`tools/voice_transcribe.py`, `whisper-1`).
+- **Webhook:** `MAX_TRANSPORT=webhook` в `.env` → `AiohttpMaxWebhook` (maxapi) на порту `MAX_WEBHOOK_PORT=8088`, публичный URL `MAX_WEBHOOK_URL`, секрет `MAX_WEBHOOK_SECRET` (MAX шлёт его в `X-Max-Bot-Api-Secret`, maxapi проверяет сам, чужие POST → 403). Подписка при старте: `delete_webhook` → `subscribe_webhook`. Режим polling остаётся дефолтом (для локальной отладки) и сам снимает webhook-подписку.
 - **Документы:** скачиваются по `attachment.payload.url` через `httpx`; агент раскладывает по категории (member/meeting/research/резюме). Сырой текст всегда сохраняется как `document` для поиска.
 - **Поиск:** семантический (`tools/embeddings.py`, gpt-эмбеддинги), порог сходства 0.2, подстрочный фолбэк при сбое OpenAI.
 - **KB вне git:** профили/INDEX/кэш векторов в `.gitignore` (приватность + чтобы рантайм-записи не конфликтовали с `git pull`). `INDEX.md` самовосстанавливается.
