@@ -28,12 +28,20 @@
       <span style="width:70px">
         {% if m.is_admin %}<span class="badge" style="color:var(--accent-deep);background:var(--accent-bg)">админ</span>{% endif %}
       </span>
+      <button class="link" type="button" style="color:var(--accent)"
+              onclick="var f=document.getElementById('rn-{{ loop.index }}');f.style.display=f.style.display==='none'?'flex':'none';f.querySelector('input[name=name]').focus()">изменить</button>
       <form class="inline" method="post" action="/roster/delete"
             onsubmit="return confirm('Удалить {{ m.name }} из реестра?')">
         <input type="hidden" name="phone" value="{{ m.phone }}">
         <button class="link" type="submit">удалить</button>
       </form>
     </div>
+    <form class="inline" id="rn-{{ loop.index }}" method="post" action="/roster/rename"
+          style="display:none;margin-top:10px;border-top:1px solid var(--cardb);padding-top:10px">
+      <input type="hidden" name="phone" value="{{ m.phone }}">
+      <input type="text" name="name" value="{{ m.name }}" style="flex:2">
+      <button class="primary" type="submit">Сохранить ФИО</button>
+    </form>
     <div style="margin-top:10px;border-top:1px solid var(--cardb);padding-top:10px;display:flex;align-items:center;gap:10px">
       <span class="muted" style="font-size:13px;width:62px">Админ</span>
       {% if m.is_admin %}

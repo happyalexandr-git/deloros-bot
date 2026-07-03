@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from tools.roster import load_roster, add_member, delete_member, find_member_by_phone, normalize_phone
+from tools.roster import load_roster, add_member, delete_member, rename_member, find_member_by_phone, normalize_phone
 from tools.access import verified_phones
 from tools import admins
 from tools.kb_search import KB_PATH
@@ -123,6 +123,18 @@ def roster_add(request: Request, name: str = Form(""), phone: str = Form("")):
     if add_member(name, phone):
         return RedirectResponse("/roster?ok=Добавлен: " + name, status_code=303)
     return RedirectResponse("/roster?error=Такой телефон уже в реестре", status_code=303)
+
+
+@app.post("/roster/rename")
+def roster_rename(request: Request, phone: str = Form(""), name: str = Form("")):
+    if not _authed(request):
+        return RedirectResponse("/login")
+    name = name.strip()
+    if not name:
+        return RedirectResponse("/roster?error=Укажите новое ФИО", status_code=303)
+    if rename_member(phone, name):
+        return RedirectResponse("/roster?ok=ФИО обновлено: " + name, status_code=303)
+    return RedirectResponse("/roster?error=Телефон не найден в реестре", status_code=303)
 
 
 @app.post("/roster/delete")

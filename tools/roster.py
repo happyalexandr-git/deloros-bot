@@ -80,6 +80,18 @@ def delete_member(phone: str) -> bool:
     return True
 
 
+def rename_member(phone: str, new_name: str) -> bool:
+    """Меняет ФИО члена клуба по телефону. False если такого телефона нет."""
+    norm = normalize_phone(phone)
+    entries = load_roster()
+    for e in entries:
+        if e["phone"] == norm:
+            e["name"] = new_name
+            _write_all(entries)
+            return True
+    return False
+
+
 def find_member_by_phone(phone: str) -> dict | None:
     """Ищет члена клуба по телефону (нормализованное сравнение)."""
     norm = normalize_phone(phone)
