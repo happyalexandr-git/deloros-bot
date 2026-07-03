@@ -21,6 +21,7 @@
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
       <a href="/member/{{ m.token }}" style="flex:2;font-weight:500">{{ m.name }}</a>
       <span class="muted" style="flex:1">{{ m.phone }}</span>
+      <span class="muted" style="width:110px;font-size:13px" title="Дата регистрации">{{ m.added or "—" }}</span>
       <span style="width:104px">
         {% if m.confirmed %}<span class="badge ok">подтверждён</span>
         {% else %}<span class="badge wait">ожидает</span>{% endif %}
