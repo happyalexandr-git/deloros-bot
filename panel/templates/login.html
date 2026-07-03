@@ -22,17 +22,21 @@
 </style>
 </head>
 <body>
-  <svg class="wavebg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMin slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path d="M0,200 C360,110 760,300 1440,160 L1440,0 L0,0 Z" fill="#e4ebf6"/>
-    <path d="M0,320 C420,230 820,360 1440,260" fill="none" stroke="#d6e1f2" stroke-width="3"/>
-    <path d="M0,410 C460,310 900,450 1440,350" fill="none" stroke="#dde6f4" stroke-width="3"/>
+  <svg class="wavebg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M-80,190 C400,60 640,-160 1520,-420" fill="none" stroke="#c7d6ee" stroke-width="5" opacity="0.9"/>
+    <path d="M-80,270 C450,130 690,-100 1520,-340" fill="none" stroke="#dbe5f4" stroke-width="19" opacity="0.7"/>
+    <path d="M-80,600 C480,460 750,180 1520,-90" fill="none" stroke="#b9cced" stroke-width="5" opacity="0.9"/>
+    <path d="M-80,680 C530,540 800,260 1520,-10" fill="none" stroke="#d6e1f2" stroke-width="32" opacity="0.7"/>
+    <path d="M-80,760 C560,620 850,340 1520,70" fill="none" stroke="#e4ebf6" stroke-width="54" opacity="0.8"/>
+    <path d="M-80,1010 C510,930 830,650 1520,360" fill="none" stroke="#c7d6ee" stroke-width="5" opacity="0.85"/>
+    <path d="M-80,1090 C560,1010 900,730 1520,440" fill="none" stroke="#dbe5f4" stroke-width="26" opacity="0.65"/>
   </svg>
   <form class="box" method="post" action="/login">
     <img class="logo" src="/static/logo-5.svg" alt="Деловая Россия">
     <p class="region">Иркутская область · админ-панель</p>
     {% if error %}<div class="err">Неверный телефон или пароль, либо нет прав админа</div>{% endif %}
     <label for="u">Телефон</label>
-    <input id="u" name="phone" type="text" inputmode="tel" placeholder="+7 902 566-05-05" autofocus>
+    <input id="u" name="phone" type="text" inputmode="tel" placeholder="+7 900 000-00-00" autofocus>
     <label for="p">Пароль</label>
     <input id="p" name="password" type="password" autocomplete="current-password">
     <button type="submit">Войти</button>
