@@ -115,6 +115,39 @@ def rename_member(phone: str, new_name: str) -> bool:
     return False
 
 
+def update_member(
+    old_phone: str,
+    name: str,
+    phone: str,
+    birth: str = "",
+    company: str = "",
+    position: str = "",
+    industry: str = "",
+) -> str:
+    """Обновляет все поля записи по старому телефону.
+
+    Возвращает: 'ok' — обновлено; 'notfound' — записи нет;
+    'dup' — новый телефон уже занят другим участником;
+    'badphone' — новый телефон не распознан.
+    """
+    old_norm = normalize_phone(old_phone)
+    new_norm = normalize_phone(phone)
+    if not new_norm:
+        return "badphone"
+    entries = load_roster()
+    target = next((e for e in entries if e["phone"] == old_norm), None)
+    if target is None:
+        return "notfound"
+    if new_norm != old_norm and any(e["phone"] == new_norm for e in entries if e is not target):
+        return "dup"
+    target.update(
+        name=name.strip(), phone=new_norm, birth=birth.strip(),
+        company=company.strip(), position=position.strip(), industry=industry.strip(),
+    )
+    _write_all(entries)
+    return "ok"
+
+
 def find_member_by_phone(phone: str) -> dict | None:
     """Ищет члена клуба по телефону (нормализованное сравнение)."""
     norm = normalize_phone(phone)

@@ -40,7 +40,7 @@
         {% if m.is_admin %}<span class="badge" style="color:var(--accent-deep);background:var(--accent-bg)">админ</span>{% endif %}
       </span>
       <button class="link" type="button" style="color:var(--accent)"
-              onclick="var f=document.getElementById('rn-{{ loop.index }}');f.style.display=f.style.display==='none'?'flex':'none';f.querySelector('input[name=name]').focus()">изменить</button>
+              onclick="var f=document.getElementById('rn-{{ loop.index }}');f.style.display=f.style.display==='none'?'block':'none';f.querySelector('input[name=name]').focus()">изменить</button>
       <form class="inline" method="post" action="/roster/delete"
             onsubmit="return confirm('Удалить {{ m.name }} из реестра?')">
         <input type="hidden" name="phone" value="{{ m.phone }}">
@@ -55,11 +55,22 @@
       {% if m.birth %}<span title="Дата рождения">🎂 {{ m.birth }}</span>{% endif %}
     </div>
     {% endif %}
-    <form class="inline" id="rn-{{ loop.index }}" method="post" action="/roster/rename"
-          style="display:none;margin-top:10px;border-top:1px solid var(--cardb);padding-top:10px">
-      <input type="hidden" name="phone" value="{{ m.phone }}">
-      <input type="text" name="name" value="{{ m.name }}" style="flex:2">
-      <button class="primary" type="submit">Сохранить ФИО</button>
+    <form id="rn-{{ loop.index }}" method="post" action="/roster/edit"
+          style="display:none;margin-top:10px;border-top:1px solid var(--cardb);padding-top:12px;flex-direction:column;gap:10px">
+      <input type="hidden" name="old_phone" value="{{ m.phone }}">
+      <div style="display:flex;gap:10px">
+        <label style="flex:2;font-size:12px;color:var(--muted)">ФИО<input type="text" name="name" value="{{ m.name }}" style="width:100%"></label>
+        <label style="flex:1;font-size:12px;color:var(--muted)">Телефон<input type="text" name="phone" value="{{ m.phone }}" style="width:100%"></label>
+      </div>
+      <div style="display:flex;gap:10px">
+        <label style="flex:2;font-size:12px;color:var(--muted)">Компания<input type="text" name="company" value="{{ m.company }}" style="width:100%"></label>
+        <label style="flex:1;font-size:12px;color:var(--muted)">Должность<input type="text" name="position" value="{{ m.position }}" style="width:100%"></label>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-end">
+        <label style="flex:2;font-size:12px;color:var(--muted)">Отрасль<input type="text" name="industry" value="{{ m.industry }}" style="width:100%"></label>
+        <label style="flex:1;font-size:12px;color:var(--muted)">Дата рождения<input type="text" name="birth" value="{{ m.birth }}" placeholder="ДД.ММ.ГГГГ" style="width:100%"></label>
+        <button class="primary" type="submit" style="white-space:nowrap">Сохранить</button>
+      </div>
     </form>
     <div style="margin-top:10px;border-top:1px solid var(--cardb);padding-top:10px;display:flex;align-items:center;gap:10px">
       <span class="muted" style="font-size:13px;width:62px">Админ</span>

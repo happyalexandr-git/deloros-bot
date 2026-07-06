@@ -53,6 +53,18 @@ def unset_admin(phone: str) -> None:
     _save(data)
 
 
+def migrate_phone(old_phone: str, new_phone: str) -> None:
+    """Переносит запись админа со старого телефона на новый (при правке
+    телефона в реестре), сохраняя пароль. No-op если старый не был админом."""
+    old, new = normalize_phone(old_phone), normalize_phone(new_phone)
+    if old == new:
+        return
+    data = _load()
+    if old in data:
+        data[new] = data.pop(old)
+        _save(data)
+
+
 def verify(phone: str, password: str) -> bool:
     """Проверяет телефон+пароль админа (constant-time)."""
     rec = _load().get(normalize_phone(phone))

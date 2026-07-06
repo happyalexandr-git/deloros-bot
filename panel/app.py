@@ -17,9 +17,12 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from tools.roster import load_roster, add_member, delete_member, rename_member, find_member_by_phone, normalize_phone
+from tools.roster import (
+    load_roster, add_member, delete_member, rename_member, update_member,
+    find_member_by_phone, normalize_phone,
+)
 from tools.access import verified_phones
-from tools import admins
+from tools import admins, access
 from tools.kb_search import KB_PATH
 from panel import data
 
@@ -128,16 +131,28 @@ def roster_add(request: Request, name: str = Form(""), phone: str = Form(""),
     return RedirectResponse("/roster?error=Такой телефон уже в реестре", status_code=303)
 
 
-@app.post("/roster/rename")
-def roster_rename(request: Request, phone: str = Form(""), name: str = Form("")):
+@app.post("/roster/edit")
+def roster_edit(request: Request, old_phone: str = Form(""), name: str = Form(""),
+                phone: str = Form(""), birth: str = Form(""), company: str = Form(""),
+                position: str = Form(""), industry: str = Form("")):
     if not _authed(request):
         return RedirectResponse("/login")
-    name = name.strip()
-    if not name:
-        return RedirectResponse("/roster?error=Укажите новое ФИО", status_code=303)
-    if rename_member(phone, name):
-        return RedirectResponse("/roster?ok=ФИО обновлено: " + name, status_code=303)
-    return RedirectResponse("/roster?error=Телефон не найден в реестре", status_code=303)
+    name, phone = name.strip(), phone.strip()
+    if not name or not phone:
+        return RedirectResponse("/roster?error=ФИО и телефон обязательны", status_code=303)
+    res = update_member(old_phone, name, phone, birth, company, position, industry)
+    if res == "ok":
+        # если телефон сменился — переносим админ-права и подтверждение на новый
+        old_n, new_n = normalize_phone(old_phone), normalize_phone(phone)
+        if old_n != new_n:
+            admins.migrate_phone(old_n, new_n)
+            access.migrate_phone(old_n, new_n)
+        return RedirectResponse("/roster?ok=Обновлено: " + name, status_code=303)
+    if res == "dup":
+        return RedirectResponse("/roster?error=Такой телефон уже у другого участника", status_code=303)
+    if res == "badphone":
+        return RedirectResponse("/roster?error=Телефон не распознан", status_code=303)
+    return RedirectResponse("/roster?error=Участник не найден", status_code=303)
 
 
 @app.post("/roster/delete")

@@ -68,3 +68,18 @@ def by_phone(phone: str) -> dict | None:
 def all_verified() -> list[dict]:
     """Все подтверждённые: [{user_id, phone, name, username}]."""
     return [{"user_id": int(uid), **v} for uid, v in _load().items()]
+
+
+def migrate_phone(old_phone: str, new_phone: str) -> None:
+    """При смене телефона в реестре переносит его в подтверждённых записях,
+    чтобы участник оставался связанным (подтверждение не слетело)."""
+    if old_phone == new_phone:
+        return
+    data = _load()
+    changed = False
+    for v in data.values():
+        if v.get("phone") == old_phone:
+            v["phone"] = new_phone
+            changed = True
+    if changed:
+        _save(data)
