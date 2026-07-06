@@ -1,10 +1,11 @@
 """Реестр членов клуба (allowlist) — сверка телефона при входе в бота.
 
 Хранится в knowledge_base/roster.md как markdown-таблица:
-    | ФИО | Телефон | Добавлен |
+    | ФИО | Телефон | Дата рождения | Компания | Должность | Отрасль | Добавлен |
 Телефоны сверяются в нормализованном виде (+7XXXXXXXXXX). Файл содержит
 PII → вне git; самовосстанавливается из шаблона. Управляется через
-админ-панель (Фаза 2), пока заполняется вручную.
+админ-панель. Парсер понимает и старый 3-колоночный формат (доп. поля
+пустые) — колонок ≥7 значит новый формат.
 """
 import re
 from datetime import date
@@ -13,13 +14,16 @@ from pathlib import Path
 KB_PATH = Path(__file__).parent.parent / "knowledge_base"
 ROSTER_PATH = KB_PATH / "roster.md"
 
+# Доп. поля профиля в реестре (кроме name/phone/added)
+EXTRA_FIELDS = ("birth", "company", "position", "industry")
+
 ROSTER_TEMPLATE = """# Реестр членов клуба «Деловая Россия»
 
 Список допущенных к боту. Телефон сверяется при входе (кнопка «Поделиться номером»).
 Формат телефона любой — сверка идёт по цифрам.
 
-| ФИО | Телефон | Добавлен |
-|-----|---------|----------|
+| ФИО | Телефон | Дата рождения | Компания | Должность | Отрасль | Добавлен |
+|-----|---------|---------------|----------|-----------|---------|----------|
 """
 
 
@@ -40,7 +44,12 @@ def _ensure_roster() -> None:
 
 
 def load_roster() -> list[dict]:
-    """Парсит markdown-таблицу реестра в список {name, phone, phone_raw}."""
+    """Парсит markdown-таблицу реестра в список записей.
+
+    Ключи: name, phone, phone_raw, added + доп. поля (birth, company,
+    position, industry). Понимает старый 3-колоночный формат — там доп.
+    поля пустые, added берётся из 3-й колонки.
+    """
     _ensure_roster()
     rows = []
     for line in ROSTER_PATH.read_text(encoding="utf-8").splitlines():
@@ -51,13 +60,23 @@ def load_roster() -> list[dict]:
         if len(cells) < 2:
             continue
         name, phone = cells[0], cells[1]
-        added = cells[2] if len(cells) >= 3 else ""
         # пропускаем заголовок и разделитель таблицы
         if name.lower() in ("фио", "name") or set(name) <= set("-: "):
             continue
         if not phone or set(phone) <= set("-: "):
             continue
-        rows.append({"name": name, "phone": normalize_phone(phone), "phone_raw": phone, "added": added})
+        if len(cells) >= 7:
+            # новый формат: ФИО|Телефон|ДР|Компания|Должность|Отрасль|Добавлен
+            birth, company, position, industry, added = cells[2], cells[3], cells[4], cells[5], cells[6]
+        else:
+            # старый формат: ФИО|Телефон|Добавлен
+            added = cells[2] if len(cells) >= 3 else ""
+            birth = company = position = industry = ""
+        rows.append({
+            "name": name, "phone": normalize_phone(phone), "phone_raw": phone,
+            "birth": birth, "company": company, "position": position,
+            "industry": industry, "added": added,
+        })
     return rows
 
 
@@ -65,7 +84,11 @@ def _write_all(entries: list[dict]) -> None:
     """Перезаписывает roster.md из списка записей (header + строки таблицы)."""
     lines = [ROSTER_TEMPLATE.rstrip()]
     for e in entries:
-        lines.append(f"| {e['name']} | {e['phone']} | {e.get('added', '')} |")
+        lines.append(
+            f"| {e['name']} | {e['phone']} | {e.get('birth', '')} | "
+            f"{e.get('company', '')} | {e.get('position', '')} | "
+            f"{e.get('industry', '')} | {e.get('added', '')} |"
+        )
     ROSTER_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -103,12 +126,45 @@ def find_member_by_phone(phone: str) -> dict | None:
     return None
 
 
-def add_member(name: str, phone: str) -> bool:
+def add_member(name: str, phone: str, birth: str = "", company: str = "",
+               position: str = "", industry: str = "") -> bool:
     """Добавляет запись в реестр. False если такой телефон уже есть."""
     _ensure_roster()
     if find_member_by_phone(phone):
         return False
-    row = f"| {name} | {normalize_phone(phone)} | {date.today().isoformat()} |\n"
-    with ROSTER_PATH.open("a", encoding="utf-8") as f:
-        f.write(row)
+    entries = load_roster()
+    entries.append({
+        "name": name, "phone": normalize_phone(phone),
+        "birth": birth, "company": company, "position": position,
+        "industry": industry, "added": date.today().isoformat(),
+    })
+    _write_all(entries)
     return True
+
+
+def upsert_member(name: str, phone: str, birth: str = "", company: str = "",
+                  position: str = "", industry: str = "") -> str:
+    """Добавляет или обновляет запись по телефону (merge, непустые поля
+    перезаписывают старые; added и статусы вне реестра сохраняются).
+    Возвращает 'added' | 'updated' | 'skip' (если телефон не распознан)."""
+    norm = normalize_phone(phone)
+    if not norm:
+        return "skip"
+    entries = load_roster()
+    for e in entries:
+        if e["phone"] == norm:
+            if name:
+                e["name"] = name
+            for f, v in (("birth", birth), ("company", company),
+                         ("position", position), ("industry", industry)):
+                if v:
+                    e[f] = v
+            _write_all(entries)
+            return "updated"
+    entries.append({
+        "name": name, "phone": norm,
+        "birth": birth, "company": company, "position": position,
+        "industry": industry, "added": date.today().isoformat(),
+    })
+    _write_all(entries)
+    return "added"

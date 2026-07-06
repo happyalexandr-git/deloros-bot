@@ -8,6 +8,14 @@
   {% else %}<span class="badge wait" style="font-size:12px;vertical-align:middle">ожидает</span>{% endif %}
 </h1>
 <p class="muted" style="margin-top:-10px">{{ m.phone }}</p>
+{% if m.company or m.position or m.industry or m.birth %}
+<div class="muted" style="font-size:14px;margin-top:-6px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:4px 16px">
+  {% if m.company %}<span><b style="font-weight:500">{{ m.company }}</b>{% if m.position %}, {{ m.position }}{% endif %}</span>
+  {% elif m.position %}<span>{{ m.position }}</span>{% endif %}
+  {% if m.industry %}<span>Отрасль: {{ m.industry }}</span>{% endif %}
+  {% if m.birth %}<span>Дата рождения: {{ m.birth }}</span>{% endif %}
+</div>
+{% endif %}
 
 <div class="grid" style="grid-template-columns:repeat(4,1fr)">
   <div class="metric"><div class="l">Запросов к боту</div><div class="n">{{ usage.requests }}</div></div>

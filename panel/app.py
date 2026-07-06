@@ -113,13 +113,17 @@ def roster_page(request: Request, error: str = "", ok: str = ""):
 
 
 @app.post("/roster/add")
-def roster_add(request: Request, name: str = Form(""), phone: str = Form("")):
+def roster_add(request: Request, name: str = Form(""), phone: str = Form(""),
+               birth: str = Form(""), company: str = Form(""),
+               position: str = Form(""), industry: str = Form("")):
     if not _authed(request):
         return RedirectResponse("/login")
     name, phone = name.strip(), phone.strip()
+    birth, company = birth.strip(), company.strip()
+    position, industry = position.strip(), industry.strip()
     if not name or not phone:
         return RedirectResponse("/roster?error=Укажите имя и телефон", status_code=303)
-    if add_member(name, phone):
+    if add_member(name, phone, birth, company, position, industry):
         return RedirectResponse("/roster?ok=Добавлен: " + name, status_code=303)
     return RedirectResponse("/roster?error=Такой телефон уже в реестре", status_code=303)
 

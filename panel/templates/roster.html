@@ -7,10 +7,20 @@
 
 <div class="card" style="margin-bottom:18px">
   <div style="font-weight:500;margin-bottom:10px">Добавить участника</div>
-  <form class="inline" method="post" action="/roster/add">
-    <input type="text" name="name" placeholder="Фамилия Имя Отчество" style="flex:2">
-    <input type="text" name="phone" placeholder="+7 900 000-00-00" style="flex:1">
-    <button class="primary" type="submit">Добавить</button>
+  <form method="post" action="/roster/add" style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;gap:10px">
+      <input type="text" name="name" placeholder="Фамилия Имя Отчество" style="flex:2">
+      <input type="text" name="phone" placeholder="+7 900 000-00-00" style="flex:1">
+    </div>
+    <div style="display:flex;gap:10px">
+      <input type="text" name="company" placeholder="Компания" style="flex:2">
+      <input type="text" name="position" placeholder="Должность" style="flex:1">
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <input type="text" name="industry" placeholder="Отрасль" style="flex:2">
+      <input type="text" name="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" style="flex:1">
+      <button class="primary" type="submit" style="white-space:nowrap">Добавить</button>
+    </div>
   </form>
 </div>
 
@@ -37,6 +47,14 @@
         <button class="link" type="submit">удалить</button>
       </form>
     </div>
+    {% if m.company or m.position or m.industry or m.birth %}
+    <div class="muted" style="font-size:13px;margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 14px">
+      {% if m.company %}<span><b style="font-weight:500">{{ m.company }}</b>{% if m.position %}, {{ m.position }}{% endif %}</span>
+      {% elif m.position %}<span>{{ m.position }}</span>{% endif %}
+      {% if m.industry %}<span>· {{ m.industry }}</span>{% endif %}
+      {% if m.birth %}<span title="Дата рождения">🎂 {{ m.birth }}</span>{% endif %}
+    </div>
+    {% endif %}
     <form class="inline" id="rn-{{ loop.index }}" method="post" action="/roster/rename"
           style="display:none;margin-top:10px;border-top:1px solid var(--cardb);padding-top:10px">
       <input type="hidden" name="phone" value="{{ m.phone }}">
