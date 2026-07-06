@@ -120,15 +120,15 @@ def roster_page(request: Request, error: str = "", ok: str = ""):
 @app.post("/roster/add")
 def roster_add(request: Request, name: str = Form(""), phone: str = Form(""),
                birth: str = Form(""), company: str = Form(""),
-               position: str = Form(""), industry: str = Form("")):
+               position: str = Form(""), industry: str = Form(""), email: str = Form("")):
     if not _authed(request):
         return RedirectResponse("/login")
     name, phone = name.strip(), phone.strip()
     birth, company = birth.strip(), company.strip()
-    position, industry = position.strip(), industry.strip()
+    position, industry, email = position.strip(), industry.strip(), email.strip()
     if not name or not phone:
         return RedirectResponse("/roster?error=Укажите имя и телефон", status_code=303)
-    if add_member(name, phone, birth, company, position, industry):
+    if add_member(name, phone, birth, company, position, industry, email):
         return RedirectResponse("/roster?ok=Добавлен: " + name, status_code=303)
     return RedirectResponse("/roster?error=Такой телефон уже в реестре", status_code=303)
 
@@ -136,13 +136,13 @@ def roster_add(request: Request, name: str = Form(""), phone: str = Form(""),
 @app.post("/roster/edit")
 def roster_edit(request: Request, old_phone: str = Form(""), name: str = Form(""),
                 phone: str = Form(""), birth: str = Form(""), company: str = Form(""),
-                position: str = Form(""), industry: str = Form("")):
+                position: str = Form(""), industry: str = Form(""), email: str = Form("")):
     if not _authed(request):
         return RedirectResponse("/login")
     name, phone = name.strip(), phone.strip()
     if not name or not phone:
         return RedirectResponse("/roster?error=ФИО и телефон обязательны", status_code=303)
-    res = update_member(old_phone, name, phone, birth, company, position, industry)
+    res = update_member(old_phone, name, phone, birth, company, position, industry, email)
     if res == "ok":
         # если телефон сменился — переносим админ-права и подтверждение на новый
         old_n, new_n = normalize_phone(old_phone), normalize_phone(phone)

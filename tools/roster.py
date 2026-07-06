@@ -15,15 +15,15 @@ KB_PATH = Path(__file__).parent.parent / "knowledge_base"
 ROSTER_PATH = KB_PATH / "roster.md"
 
 # Доп. поля профиля в реестре (кроме name/phone/added)
-EXTRA_FIELDS = ("birth", "company", "position", "industry")
+EXTRA_FIELDS = ("birth", "company", "position", "industry", "email")
 
 ROSTER_TEMPLATE = """# Реестр членов клуба «Деловая Россия»
 
 Список допущенных к боту. Телефон сверяется при входе (кнопка «Поделиться номером»).
 Формат телефона любой — сверка идёт по цифрам.
 
-| ФИО | Телефон | Дата рождения | Компания | Должность | Отрасль | Добавлен |
-|-----|---------|---------------|----------|-----------|---------|----------|
+| ФИО | Телефон | Дата рождения | Компания | Должность | Отрасль | Email | Добавлен |
+|-----|---------|---------------|----------|-----------|---------|-------|----------|
 """
 
 
@@ -65,8 +65,12 @@ def load_roster() -> list[dict]:
             continue
         if not phone or set(phone) <= set("-: "):
             continue
-        if len(cells) >= 7:
-            # новый формат: ФИО|Телефон|ДР|Компания|Должность|Отрасль|Добавлен
+        email = ""
+        if len(cells) >= 8:
+            # формат с email: ФИО|Телефон|ДР|Компания|Должность|Отрасль|Email|Добавлен
+            birth, company, position, industry, email, added = cells[2], cells[3], cells[4], cells[5], cells[6], cells[7]
+        elif len(cells) >= 7:
+            # формат без email: ФИО|Телефон|ДР|Компания|Должность|Отрасль|Добавлен
             birth, company, position, industry, added = cells[2], cells[3], cells[4], cells[5], cells[6]
         else:
             # старый формат: ФИО|Телефон|Добавлен
@@ -75,7 +79,7 @@ def load_roster() -> list[dict]:
         rows.append({
             "name": name, "phone": normalize_phone(phone), "phone_raw": phone,
             "birth": birth, "company": company, "position": position,
-            "industry": industry, "added": added,
+            "industry": industry, "email": email, "added": added,
         })
     return rows
 
@@ -87,7 +91,7 @@ def _write_all(entries: list[dict]) -> None:
         lines.append(
             f"| {e['name']} | {e['phone']} | {e.get('birth', '')} | "
             f"{e.get('company', '')} | {e.get('position', '')} | "
-            f"{e.get('industry', '')} | {e.get('added', '')} |"
+            f"{e.get('industry', '')} | {e.get('email', '')} | {e.get('added', '')} |"
         )
     ROSTER_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -123,6 +127,7 @@ def update_member(
     company: str = "",
     position: str = "",
     industry: str = "",
+    email: str = "",
 ) -> str:
     """Обновляет все поля записи по старому телефону.
 
@@ -142,7 +147,8 @@ def update_member(
         return "dup"
     target.update(
         name=name.strip(), phone=new_norm, birth=birth.strip(),
-        company=company.strip(), position=position.strip(), industry=industry.strip(),
+        company=company.strip(), position=position.strip(),
+        industry=industry.strip(), email=email.strip(),
     )
     _write_all(entries)
     return "ok"
@@ -160,7 +166,7 @@ def find_member_by_phone(phone: str) -> dict | None:
 
 
 def add_member(name: str, phone: str, birth: str = "", company: str = "",
-               position: str = "", industry: str = "") -> bool:
+               position: str = "", industry: str = "", email: str = "") -> bool:
     """Добавляет запись в реестр. False если такой телефон уже есть."""
     _ensure_roster()
     if find_member_by_phone(phone):
@@ -169,14 +175,14 @@ def add_member(name: str, phone: str, birth: str = "", company: str = "",
     entries.append({
         "name": name, "phone": normalize_phone(phone),
         "birth": birth, "company": company, "position": position,
-        "industry": industry, "added": date.today().isoformat(),
+        "industry": industry, "email": email, "added": date.today().isoformat(),
     })
     _write_all(entries)
     return True
 
 
 def upsert_member(name: str, phone: str, birth: str = "", company: str = "",
-                  position: str = "", industry: str = "") -> str:
+                  position: str = "", industry: str = "", email: str = "") -> str:
     """Добавляет или обновляет запись по телефону (merge, непустые поля
     перезаписывают старые; added и статусы вне реестра сохраняются).
     Возвращает 'added' | 'updated' | 'skip' (если телефон не распознан)."""
@@ -189,7 +195,8 @@ def upsert_member(name: str, phone: str, birth: str = "", company: str = "",
             if name:
                 e["name"] = name
             for f, v in (("birth", birth), ("company", company),
-                         ("position", position), ("industry", industry)):
+                         ("position", position), ("industry", industry),
+                         ("email", email)):
                 if v:
                     e[f] = v
             _write_all(entries)
@@ -197,7 +204,7 @@ def upsert_member(name: str, phone: str, birth: str = "", company: str = "",
     entries.append({
         "name": name, "phone": norm,
         "birth": birth, "company": company, "position": position,
-        "industry": industry, "added": date.today().isoformat(),
+        "industry": industry, "email": email, "added": date.today().isoformat(),
     })
     _write_all(entries)
     return "added"

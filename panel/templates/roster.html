@@ -16,10 +16,13 @@
       <input type="text" name="company" placeholder="Компания" style="flex:2">
       <input type="text" name="position" placeholder="Должность" style="flex:1">
     </div>
-    <div style="display:flex;gap:10px;align-items:center">
+    <div style="display:flex;gap:10px">
       <input type="text" name="industry" placeholder="Отрасль" style="flex:2">
       <input type="text" name="birth" placeholder="Дата рождения (ДД.ММ.ГГГГ)" style="flex:1">
-      <button class="primary" type="submit" style="white-space:nowrap">Добавить</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <input type="email" name="email" placeholder="Email" style="flex:2">
+      <button class="primary" type="submit" style="white-space:nowrap;margin-left:auto">Добавить</button>
     </div>
   </form>
 </div>
@@ -53,6 +56,7 @@
       {% elif m.position %}<span>{{ m.position }}</span>{% endif %}
       {% if m.industry %}<span>· {{ m.industry }}</span>{% endif %}
       {% if m.birth %}<span title="Дата рождения">🎂 {{ m.birth }}</span>{% endif %}
+      {% if m.email %}<span title="Email">✉ <a href="mailto:{{ m.email }}">{{ m.email }}</a></span>{% endif %}
     </div>
     {% endif %}
     <form id="rn-{{ loop.index }}" method="post" action="/roster/edit"
@@ -66,10 +70,13 @@
         <label style="flex:2;font-size:12px;color:var(--muted)">Компания<input type="text" name="company" value="{{ m.company }}" style="width:100%"></label>
         <label style="flex:1;font-size:12px;color:var(--muted)">Должность<input type="text" name="position" value="{{ m.position }}" style="width:100%"></label>
       </div>
-      <div style="display:flex;gap:10px;align-items:flex-end">
+      <div style="display:flex;gap:10px">
         <label style="flex:2;font-size:12px;color:var(--muted)">Отрасль<input type="text" name="industry" value="{{ m.industry }}" style="width:100%"></label>
         <label style="flex:1;font-size:12px;color:var(--muted)">Дата рождения<input type="text" name="birth" value="{{ m.birth }}" placeholder="ДД.ММ.ГГГГ" style="width:100%"></label>
-        <button class="primary" type="submit" style="white-space:nowrap">Сохранить</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-end">
+        <label style="flex:2;font-size:12px;color:var(--muted)">Email<input type="email" name="email" value="{{ m.email }}" style="width:100%"></label>
+        <button class="primary" type="submit" style="white-space:nowrap;margin-left:auto">Сохранить</button>
       </div>
     </form>
     <div style="margin-top:10px;border-top:1px solid var(--cardb);padding-top:10px;display:flex;align-items:center;gap:10px">
