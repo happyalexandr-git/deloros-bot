@@ -105,6 +105,8 @@ def roster_page(request: Request, error: str = "", ok: str = ""):
     if not _authed(request):
         return RedirectResponse("/login")
     roster = load_roster()
+    # по алфавиту: фамилия → имя → отчество (ё приравниваем к е)
+    roster.sort(key=lambda m: m["name"].casefold().replace("ё", "е"))
     verified = verified_phones()
     for m in roster:
         m["confirmed"] = m["phone"] in verified
