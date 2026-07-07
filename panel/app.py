@@ -29,6 +29,10 @@ from panel import data
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 
+# Председатель Иркутского отделения — закрепляется первым в реестре с пометкой.
+# При смене его телефона обновить здесь.
+CHAIRMAN_PHONE = "+79021750053"  # Пасюк Александр Иванович
+
 app = FastAPI(title="Деловая Россия · Иркутская область — панель")
 app.add_middleware(
     SessionMiddleware, secret_key=os.environ.get("PANEL_SECRET_KEY", secrets.token_hex(32))
@@ -106,13 +110,14 @@ def roster_page(request: Request, error: str = "", ok: str = ""):
     if not _authed(request):
         return RedirectResponse("/login")
     roster = load_roster()
-    # по алфавиту: фамилия → имя → отчество (ё приравниваем к е)
-    roster.sort(key=lambda m: m["name"].casefold().replace("ё", "е"))
     verified = verified_phones()
     for m in roster:
         m["confirmed"] = m["phone"] in verified
         m["is_admin"] = admins.is_admin(m["phone"])
         m["token"] = m["phone"].lstrip("+")
+        m["chairman"] = m["phone"] == CHAIRMAN_PHONE
+    # председатель — первым, остальные по алфавиту (ё приравниваем к е)
+    roster.sort(key=lambda m: (not m["chairman"], m["name"].casefold().replace("ё", "е")))
     return templates.TemplateResponse(request, "roster.html", _ctx(
         request, tab="roster", roster=roster, error=error, ok=ok,
     ))
