@@ -319,7 +319,13 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             await _handle_document(event, bot, doc, chat_id, username, caption)
             return
 
-        # 3) Текст
+        # 3) Картинка — gpt-4o vision описывает/извлекает текст, дальше как обычный запрос
+        image = next((a for a in atts if getattr(a, "type", None) == AttachmentType.IMAGE), None)
+        if image is not None:
+            await _handle_image(event, bot, image, chat_id, username, caption, user_id)
+            return
+
+        # 4) Текст
         if not text:
             return
         clean_text = caption
@@ -404,6 +410,48 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка агента (голос): {e}")
+        await event.message.answer("Произошла ошибка. Попробуй ещё раз.")
+
+
+async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
+                        username: str, caption: str = "", user_id=None):
+    """Распознаёт изображение через gpt-4o vision, затем отвечает как на текст."""
+    url = _payload_url(image)
+    if not url or not os.environ.get("OPENAI_API_KEY"):
+        await event.message.answer("Не удалось получить изображение.")
+        return
+
+    await _typing(bot, chat_id)
+    try:
+        from tools.image_describe import describe_image
+        description = describe_image(url, caption).strip()
+    except Exception as e:
+        logger.error(f"Ошибка распознавания изображения: {e}")
+        await event.message.answer("Не смог разобрать изображение. Попробуй ещё раз или опиши текстом.")
+        return
+
+    if not description:
+        await event.message.answer("Не смог разобрать изображение. Попробуй ещё раз или опиши текстом.")
+        return
+
+    # Собираем запрос агенту: вопрос пользователя (если был) + что на картинке
+    if caption:
+        user_message = f"{caption}\n\n[К сообщению приложено изображение. На нём: {description}]"
+    else:
+        user_message = f"[Пользователь прислал изображение. На нём: {description}]"
+
+    await _typing(bot, chat_id)
+    try:
+        response = await run_agent(
+            chat_id=chat_id,
+            username=username,
+            user_message=user_message,
+            chat_type=str(event.message.recipient.chat_type),
+            is_admin=_is_admin_uid(user_id),
+        )
+        await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        logger.error(f"Ошибка агента (картинка): {e}")
         await event.message.answer("Произошла ошибка. Попробуй ещё раз.")
 
 
