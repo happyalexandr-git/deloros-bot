@@ -1,12 +1,27 @@
+import base64
 import os
 
 
-def describe_image(url: str, caption: str = "") -> str:
-    """Описывает изображение через gpt-4o vision по URL.
+def _mime_of(data: bytes) -> str:
+    """Определяет MIME по сигнатуре файла (по умолчанию jpeg)."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"GIF":
+        return "image/gif"
+    if data[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
 
-    Возвращает текстовое описание: что на картинке + дословно извлечённый
-    текст/цифры/таблицы. caption (подпись/вопрос пользователя) — подсказка,
-    на чём сфокусироваться. Модель сама скачивает изображение по URL.
+
+def describe_image(image_bytes: bytes, caption: str = "") -> str:
+    """Описывает изображение через gpt-4o vision.
+
+    Картинка скачивается вызывающим кодом и передаётся байтами (надёжнее,
+    чем давать модели URL — MAX-ссылки OpenAI может не скачать). Возвращает
+    описание: что на картинке + дословно извлечённый текст/цифры/таблицы.
+    caption (подпись/вопрос пользователя) фокусирует ответ.
     """
     import httpx
     from openai import OpenAI
@@ -27,6 +42,9 @@ def describe_image(url: str, caption: str = "") -> str:
     if caption:
         instruction += f"\nПользователь спрашивает: «{caption}» — учти это в описании."
 
+    b64 = base64.b64encode(image_bytes).decode()
+    data_url = f"data:{_mime_of(image_bytes)};base64,{b64}"
+
     model = os.environ.get("OPENAI_MODEL", "gpt-4o")
     response = client.chat.completions.create(
         model=model,
@@ -34,7 +52,7 @@ def describe_image(url: str, caption: str = "") -> str:
             "role": "user",
             "content": [
                 {"type": "text", "text": instruction},
-                {"type": "image_url", "image_url": {"url": url}},
+                {"type": "image_url", "image_url": {"url": data_url}},
             ],
         }],
         max_tokens=1000,

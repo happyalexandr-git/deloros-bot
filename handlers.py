@@ -422,13 +422,18 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
         return
 
     await _typing(bot, chat_id)
+    local_path = UPLOADS_PATH / f"image_{uuid.uuid4().hex}"
     try:
+        await _download(url, local_path)
+        image_bytes = local_path.read_bytes()
         from tools.image_describe import describe_image
-        description = describe_image(url, caption).strip()
+        description = describe_image(image_bytes, caption).strip()
     except Exception as e:
         logger.error(f"Ошибка распознавания изображения: {e}")
         await event.message.answer("Не смог разобрать изображение. Попробуй ещё раз или опиши текстом.")
         return
+    finally:
+        local_path.unlink(missing_ok=True)
 
     if not description:
         await event.message.answer("Не смог разобрать изображение. Попробуй ещё раз или опиши текстом.")
