@@ -406,6 +406,7 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
             user_message=text,
             chat_type=str(event.message.recipient.chat_type),
             is_admin=_is_admin_uid(event.message.sender.user_id if event.message.sender else None),
+            kind="voice",
         )
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
@@ -453,6 +454,7 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
             user_message=user_message,
             chat_type=str(event.message.recipient.chat_type),
             is_admin=_is_admin_uid(user_id),
+            kind="image",
         )
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:

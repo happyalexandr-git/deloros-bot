@@ -97,6 +97,7 @@ def overview(request: Request):
     return templates.TemplateResponse(request, "overview.html", _ctx(
         request, tab="overview", total=len(roster), confirmed=confirmed,
         profiles=_members_count(), docs=len(data.documents_all()),
+        usage=data.usage_overview(roster),
     ))
 
 

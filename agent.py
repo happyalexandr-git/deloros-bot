@@ -358,6 +358,7 @@ async def run_agent(
     user_message: str,
     chat_type: str = "unknown",
     is_admin: bool = False,
+    kind: str = "text",
 ) -> str:
     """
     Запускает агентный цикл: отправляет запрос в OpenAI,
@@ -429,6 +430,7 @@ async def run_agent(
             username=username,
             input_tokens=total_input_tokens,
             output_tokens=total_output_tokens,
+            kind=kind,
         )
 
         return final_text

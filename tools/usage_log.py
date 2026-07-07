@@ -19,6 +19,7 @@ def log_usage(
     username: str,
     input_tokens: int,
     output_tokens: int,
+    kind: str = "text",
 ) -> None:
     cost = (input_tokens * PRICE_INPUT + output_tokens * PRICE_OUTPUT) / 1_000_000
     entry = {
@@ -26,6 +27,7 @@ def log_usage(
         "chat_id": chat_id,
         "chat_type": chat_type,
         "username": username,
+        "kind": kind,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cost_usd": round(cost, 6),

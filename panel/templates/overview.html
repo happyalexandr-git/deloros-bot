@@ -7,4 +7,60 @@
   <div class="metric"><div class="l">Профилей собрано</div><div class="n">{{ profiles }}</div></div>
   <div class="metric"><div class="l">Документов</div><div class="n">{{ docs }}</div></div>
 </div>
+
+{% if not usage.has_data %}
+<div class="card"><p class="muted" style="margin:0">Обращений к боту пока не было — статистика появится после первых запросов.</p></div>
+{% else %}
+
+<!-- Последняя активность -->
+<div class="card" style="margin-bottom:16px">
+  <div style="font-weight:500;margin-bottom:8px">Последняя активность</div>
+  {% if usage.last %}
+  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+    <span style="font-size:16px;font-weight:500">{{ usage.last.name }}</span>
+    <span class="muted">{{ usage.last.ago }}</span>
+    <span class="badge wait">{{ usage.last.chat }} · {{ usage.last.kind }}</span>
+  </div>
+  {% endif %}
+  <div class="muted" style="margin-top:10px;font-size:14px">
+    Обращений сегодня: <b style="color:var(--text)">{{ usage.today }}</b>
+    &nbsp;·&nbsp; за неделю: <b style="color:var(--text)">{{ usage.week }}</b>
+  </div>
+</div>
+
+<!-- Активность за 30 дней -->
+<div class="card" style="margin-bottom:16px">
+  <div style="font-weight:500;margin-bottom:10px">Активность за 30 дней</div>
+  <div style="display:flex;gap:28px;align-items:center;flex-wrap:wrap">
+    <div><div class="muted" style="font-size:13px">Активных участников</div><div style="font-size:24px;font-weight:600">{{ usage.active_30d }}</div></div>
+    <div><div class="muted" style="font-size:13px">Всего обращений</div><div style="font-size:24px;font-weight:600">{{ usage.total_30d }}</div></div>
+    <div style="margin-left:auto;text-align:right">
+      <div class="muted" style="font-size:13px">По дням (2 недели)</div>
+      <div style="font-size:26px;letter-spacing:2px;line-height:1;color:var(--accent)">{{ usage.spark }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Охват и вовлечённость -->
+<div class="card" style="margin-bottom:16px">
+  <div style="font-weight:500;margin-bottom:10px">Охват и вовлечённость</div>
+  <div style="display:flex;gap:28px;flex-wrap:wrap">
+    <div><div class="muted" style="font-size:13px">Подключились</div><div style="font-size:24px;font-weight:600">{{ usage.connected }} <span class="muted" style="font-size:15px">из {{ usage.total }}</span></div></div>
+    <div><div class="muted" style="font-size:13px">Активны за неделю</div><div style="font-size:24px;font-weight:600">{{ usage.active_week }}</div></div>
+    <div><div class="muted" style="font-size:13px">Реплик «ищу / предлагаю»</div><div style="font-size:24px;font-weight:600">{{ usage.matching }}</div></div>
+  </div>
+</div>
+
+<!-- Лента последних обращений -->
+<div class="card">
+  <div style="font-weight:500;margin-bottom:8px">Последние обращения</div>
+  {% for r in usage.feed %}
+  <div class="row" style="font-size:14px">
+    <span style="flex:2">{{ r.name }}</span>
+    <span class="muted" style="flex:1">{{ r.ago }}</span>
+    <span class="badge wait">{{ r.chat }} · {{ r.kind }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 {% endblock %}
