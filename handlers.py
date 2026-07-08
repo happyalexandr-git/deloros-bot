@@ -108,9 +108,14 @@ def _is_group(msg) -> bool:
 
 
 def _is_mentioned(msg) -> bool:
-    """Бот упомянут: @username в тексте, USER_MENTION в разметке или reply на бота."""
+    """Бот вызван: @username, слово «делорос» в тексте, USER_MENTION в разметке
+    или reply на бота. (Слово «делорос» сработает в группе только если бот —
+    админ чата и получает все сообщения; иначе MAX шлёт лишь @упоминания.)"""
     text = _text_of(msg)
     if _BOT_USERNAME and f"@{_BOT_USERNAME}" in text:
+        return True
+
+    if "делорос" in text.lower():
         return True
 
     body = msg.body
