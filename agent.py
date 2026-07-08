@@ -1,9 +1,12 @@
 import json
+import logging
 import os
 from pathlib import Path
 
 import httpx
 from openai import OpenAI
+
+logger = logging.getLogger(__name__)
 
 from tools.kb_search import search_kb, list_kb
 from tools.chat_log import get_chat_log, search_chat_log
@@ -36,7 +39,11 @@ SYSTEM_PROMPT = """Ты — Делорос, ассистент чата сооб
    Контакт НЕ спрашивай — у тебя уже есть аккаунт человека в MAX (его username из сообщения), просто зафиксируй его в профиле. Участник может прислать резюме, биографию или рассказ о себе файлом (PDF/DOCX/TXT) или голосовым — тогда извлеки из присланного максимум для профиля и задай ТОЛЬКО те вопросы из списка, ответов на которые ещё нет, не спрашивая повторно про уже известное. Собрав данные — сохрани профиль через save_to_kb(category="member"). Цель — собрать максимум полезного, чтобы человек не сочинял о себе сам.
 3. Поиск компетенций и метчинг запросов. Замечаешь в чате «ищу …» и «могу предложить …». Сводишь спрос с предложением: ищешь подходящих людей в профилях (search_kb) и в истории чата (search_chat_log) и подсказываешь, кто кому может быть полезен. Важные запросы можешь сохранять через save_to_kb(category="request").
 4. Общий ассистент чата. Отвечаешь на вопросы, делаешь саммари обсуждений, веб-поиск, новости, напоминания, разбор документов. Понимаешь картинки: если к сообщению приложено изображение, его содержимое (что на нём, извлечённый текст/цифры/таблицы) уже распознано и передано тебе в тексте запроса в квадратных скобках — используй это, отвечай по сути и не говори, что не видишь картинок.
-5. Уведомления о мероприятиях. Когда АДМИНИСТРАТОР сообщает о мероприятии и просит уведомить участников — используй notify_participants (target='all' для всех или имя/телефон конкретного участника, обязательно укажи дату-время send_at по Иркутску UTC+8). Бот сам напомнит адресатам в личку в нужное время. Если просит НЕ админ — вежливо откажи: рассылку участникам делает только администратор. Если не указано время — переспроси когда напомнить.
+5. Уведомления и сообщения участникам.
+- Мгновенно передать сообщение участнику в личку («напиши/передай привет Иванову», «напиши Пасюку …») — используй send_message_now (target — имя/фамилия или телефон; text — сообщение). Отправляется сразу. Массовая отправка сразу всем (target='all') — только для админа; одному участнику — можно любому подтверждённому участнику. Адресат увидит, от кого сообщение.
+- Отложенное уведомление о мероприятии в личку («напомни всем 15-го в 10:00 …») — notify_participants (target='all' или имя/телефон, обязательно send_at 'YYYY-MM-DD HH:MM' по Иркутску UTC+8). ТОЛЬКО админ; не админу — вежливо откажи. Если время не указано — переспроси когда.
+- Напоминание в текущий чат в заданное время — schedule_message.
+Различай: «сейчас» → send_message_now; «такого-то числа / в такое-то время» → notify_participants (в личку) или schedule_message (в чат).
 
 Как работает память:
 - Все сообщения чата автоматически сохраняются в лог (chat_log) — ты ВСЕГДА имеешь доступ к истории. Никогда не говори, что не видел сообщений.
@@ -203,10 +210,25 @@ _TOOL_DEFS = [
                 },
                 "send_at": {
                     "type": "string",
-                    "description": "Дата и время отправки в формате 'YYYY-MM-DD HH:MM' по Москве (UTC+3)",
+                    "description": "Дата и время отправки в формате 'YYYY-MM-DD HH:MM' по Иркутску (UTC+8)",
                 },
             },
             "required": ["text", "send_at"],
+        },
+    },
+    {
+        "name": "send_message_now",
+        "description": "Немедленно отправить сообщение участнику клуба в ЛИЧКУ (без ожидания времени). Используй, когда просят передать/написать что-то другому участнику прямо сейчас — например «напиши привет Иванову». target — имя/фамилия или телефон участника; 'all' (всем сразу) — ТОЛЬКО для админа. Адресат получит сообщение с указанием, от кого оно.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Текст сообщения адресату"},
+                "target": {
+                    "type": "string",
+                    "description": "Имя/фамилия или телефон участника; 'all' — всем (только админ)",
+                },
+            },
+            "required": ["text", "target"],
         },
     },
     {
@@ -306,7 +328,8 @@ def _resolve_targets(target: str) -> tuple[list[int], str]:
     return [v["user_id"]], member["name"]
 
 
-def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0, is_admin: bool = False) -> str:
+async def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0,
+                        is_admin: bool = False, bot=None, sender: str = "") -> str:
     if tool_name == "get_chat_log":
         return get_chat_log(chat_id=chat_id, limit=tool_input.get("limit", 100))
     if tool_name == "search_chat_log":
@@ -344,6 +367,27 @@ def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0, is_admin: 
             text=tool_input["text"],
             send_at=tool_input["send_at"],
         )
+    if tool_name == "send_message_now":
+        target = tool_input["target"]
+        is_mass = (target or "").strip().lower() in ("all", "все", "всем", "каждому", "everyone", "всех")
+        if is_mass and not is_admin:
+            return "Написать сразу всем участникам может только администратор клуба."
+        if bot is None:
+            return "Не могу отправить сейчас (нет доступа к отправке)."
+        ids, who = _resolve_targets(target)
+        if not ids:
+            return who
+        prefix = f"✉️ Сообщение от участника {sender} через «Делорос»:\n\n" if sender else "✉️ Сообщение через «Делорос»:\n\n"
+        sent = 0
+        for uid in ids:
+            try:
+                await bot.send_message(user_id=uid, text=prefix + tool_input["text"])
+                sent += 1
+            except Exception as e:
+                logger.error(f"send_message_now: не доставлено user_id={uid}: {e}")
+        if sent == 0:
+            return f"Не удалось доставить сообщение ({who})."
+        return f"Отправлено ({who})."
     if tool_name == "notify_participants":
         if not is_admin:
             return "Уведомлять других участников может только администратор клуба."
@@ -367,6 +411,7 @@ async def run_agent(
     chat_type: str = "unknown",
     is_admin: bool = False,
     kind: str = "text",
+    bot=None,
 ) -> str:
     """
     Запускает агентный цикл: отправляет запрос в OpenAI,
@@ -419,7 +464,8 @@ async def run_agent(
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                result = _execute_tool(tc.function.name, args, chat_id=chat_id, is_admin=is_admin)
+                result = await _execute_tool(tc.function.name, args, chat_id=chat_id,
+                                             is_admin=is_admin, bot=bot, sender=username)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,

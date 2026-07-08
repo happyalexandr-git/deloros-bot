@@ -268,6 +268,7 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             user_message=f"Сделай саммари последних сообщений чата:\n\n{log}",
             chat_type=str(msg.recipient.chat_type),
             is_admin=_is_admin_uid(msg.sender.user_id if msg.sender else None),
+            bot=bot,
         )
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
 
@@ -346,6 +347,7 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
                 user_message=clean_text,
                 chat_type=str(msg.recipient.chat_type),
                 is_admin=_is_admin_uid(user_id),
+                bot=bot,
             )
             await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
@@ -412,6 +414,7 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
             chat_type=str(event.message.recipient.chat_type),
             is_admin=_is_admin_uid(event.message.sender.user_id if event.message.sender else None),
             kind="voice",
+            bot=bot,
         )
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
@@ -460,6 +463,7 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
             chat_type=str(event.message.recipient.chat_type),
             is_admin=_is_admin_uid(user_id),
             kind="image",
+            bot=bot,
         )
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
@@ -547,6 +551,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             user_message=agent_msg,
             chat_type=str(event.message.recipient.chat_type),
             is_admin=_is_admin_uid(event.message.sender.user_id if event.message.sender else None),
+            bot=bot,
         )
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
