@@ -381,11 +381,12 @@ async def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0,
             return "Написать сразу всем участникам может только администратор клуба."
         if bot is None:
             return "Не могу отправить сейчас (нет доступа к отправке)."
-        # Анти-спам: cap длины и лимит отправок на пользователя (в коде, не в промпте)
+        # Анти-спам: cap длины и лимит отправок ПО ОТПРАВИТЕЛЮ (в коде, не в промпте):
+        # суммарно ≤15 личных/час (кому угодно), ≤5/час массовых.
         if len(text or "") > 2000:
             return "Сообщение слишком длинное (лимит 2000 символов)."
         from tools.rate_limit import allow
-        limit, window = (5, 3600) if is_mass else (15, 3600)  # массовых — не больше 5/час
+        limit, window = (5, 3600) if is_mass else (15, 3600)
         if not allow(f"sendnow:{sender or 'anon'}", limit, window):
             return "Слишком много отправок за последний час — попробуйте позже (защита от спама)."
         ids, who = _resolve_targets(target)
