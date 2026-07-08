@@ -45,17 +45,17 @@ _BOT_USERNAME: str = ""
 
 # Тексты гейта по телефону
 WELCOME_PROMPT = (
-    "Привет! Я **Делорос** — ассистент сообщества «Деловая Россия».\n\n"
-    "Доступ к боту только для участников клуба. Чтобы подтвердить, что ты "
-    "участник, нажми кнопку **«📞 Поделиться номером»** ниже."
+    "Здравствуйте! Я **Делорос** — ассистент сообщества «Деловая Россия».\n\n"
+    "Доступ к боту только для участников клуба. Чтобы подтвердить, что вы "
+    "участник, нажмите кнопку **«📞 Поделиться номером»** ниже."
 )
 NEED_PHONE_PROMPT = (
-    "Чтобы пользоваться ботом, подтверди, что ты участник клуба «Деловая Россия» "
-    "— поделись номером телефона кнопкой ниже."
+    "Чтобы пользоваться ботом, подтвердите, что вы участник клуба «Деловая Россия» "
+    "— поделитесь номером телефона кнопкой ниже."
 )
 NOT_IN_ROSTER = (
     "Такого телефона нет среди участников клуба «Деловая Россия». "
-    "Если это ошибка — обратись к администратору."
+    "Если это ошибка — обратитесь к администратору."
 )
 
 
@@ -240,13 +240,13 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             )
             return
         await event.message.answer(
-            "Привет! Я **Делорос** — ассистент сообщества «Деловая Россия».\n\n"
+            "Здравствуйте! Я **Делорос** — ассистент сообщества «Деловая Россия».\n\n"
             "**Чем могу помочь:**\n"
-            "• Найду, кто разбирается в нужной теме — просто спроси «кто поможет с …»\n"
-            "• Заведу твой профиль участника — напиши «добавь меня», проведу интервью\n"
+            "• Найду, кто разбирается в нужной теме — просто спросите «кто поможет с …»\n"
+            "• Заведу ваш профиль участника — напишите «добавьте меня», проведу интервью\n"
             "• Сведу спрос и предложение («ищу …» / «могу предложить …»)\n"
             "• Саммари обсуждений, поиск в интернете, новости, напоминания, разбор файлов\n\n"
-            "В группе — упомяни меня `@" + (_BOT_USERNAME or "deloros") + "` или ответь на моё сообщение.",
+            "В группе — упомяните меня `@" + (_BOT_USERNAME or "deloros") + "` или ответьте на моё сообщение.",
             parse_mode=ParseMode.MARKDOWN,
         )
 
@@ -345,7 +345,7 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             logger.error(f"Ошибка агента: {e}")
-            await event.message.answer("Произошла ошибка. Попробуй ещё раз.")
+            await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
 
 
 # ---------- обработка вложений ----------
@@ -358,9 +358,9 @@ async def _handle_contact(event: MessageCreated, contact, user_id):
         uname = event.message.sender.username if event.message.sender else None
         mark_verified(user_id, normalize_phone(phone), member["name"], uname)
         await event.message.answer(
-            f"Узнал тебя, **{member['name']}**! Добро пожаловать в сообщество «Деловая Россия». 🤝\n\n"
-            "Давай соберу твой профиль, чтобы находить тебе полезные связи. "
-            "Расскажи в двух словах — чем ты занимаешься?",
+            f"Рад видеть вас, **{member['name']}**! Добро пожаловать в сообщество «Деловая Россия». 🤝\n\n"
+            "Давайте соберу ваш профиль, чтобы находить вам полезные связи. "
+            "Расскажите в двух словах — чем вы занимаетесь?",
             parse_mode=ParseMode.MARKDOWN,
         )
     else:
@@ -386,7 +386,7 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
                 local_path.unlink(missing_ok=True)
     if not text:
         await event.message.answer(
-            "Не смог распознать голосовое. Можешь продублировать сообщением?"
+            "Не смог распознать голосовое. Можете продублировать сообщением?"
         )
         return
 
@@ -411,7 +411,7 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка агента (голос): {e}")
-        await event.message.answer("Произошла ошибка. Попробуй ещё раз.")
+        await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
 
 
 async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
@@ -431,13 +431,13 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
         description = describe_image(image_bytes, caption).strip()
     except Exception as e:
         logger.error(f"Ошибка распознавания изображения: {e}")
-        await event.message.answer("Не смог разобрать изображение. Попробуй ещё раз или опиши текстом.")
+        await event.message.answer("Не смог разобрать изображение. Попробуйте ещё раз или опишите текстом.")
         return
     finally:
         local_path.unlink(missing_ok=True)
 
     if not description:
-        await event.message.answer("Не смог разобрать изображение. Попробуй ещё раз или опиши текстом.")
+        await event.message.answer("Не смог разобрать изображение. Попробуйте ещё раз или опишите текстом.")
         return
 
     # Собираем запрос агенту: вопрос пользователя (если был) + что на картинке
@@ -459,7 +459,7 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
         await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка агента (картинка): {e}")
-        await event.message.answer("Произошла ошибка. Попробуй ещё раз.")
+        await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
 
 
 async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, username: str, caption: str = ""):
@@ -533,7 +533,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             "с кратким содержанием, решениями и договорённостями;\n"
             "- исследование / аналитика / статья → сохрани save_to_kb(category='research') с кратким резюме;\n"
             "- иначе → кратко резюмируй суть.\n"
-            "Полный текст файла уже сохранён в базе для поиска — от тебя нужна структурная запись и/или резюме."
+            "Полный текст файла уже сохранён в базе для поиска — от вас нужна структурная запись и/или резюме."
         )
         await _typing(bot, chat_id)
         response = await run_agent(
