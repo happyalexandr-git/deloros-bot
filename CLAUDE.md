@@ -68,8 +68,9 @@ Markdown в `knowledge_base/members/`, фронтматтер как в valentin
 | `get_chat_log` / `search_chat_log` | `tools/chat_log.py` | История чата, поиск «кто что искал/предлагал» |
 | `web_search` | `tools/web_search.py` | Веб-поиск (Tavily) |
 | `get_news` | `tools/news_rss.py` | Новости RSS |
-| `list_reminders` / `schedule_message` | `tools/reminder.py` | Напоминания (Иркутск UTC+8); адресные уведомления в личку через `targets` |
-| `notify_participants` | `agent.py` + `tools/reminder.py` | Уведомить участников о мероприятии (в личку, в нужное время). **Только админ** (`tools/admins.py`); target='all' или имя/телефон |
+| `list_reminders` / `schedule_message` | `tools/reminder.py` | Напоминания в текущий чат (Иркутск UTC+8); адресные — в личку через `targets` |
+| `notify_participants` | `agent.py` + `tools/reminder.py` | **Отложенное** уведомление участникам в личку в нужное время (`send_at`). **Только админ**; target='all' или имя/телефон |
+| `send_message_now` | `agent.py` | **Мгновенно** написать участнику в личку («напиши привет Иванову»). Одному — любой подтверждённый; target='all' — только админ. Шлёт напрямую через `bot.send_message` с указанием отправителя |
 
 ## Хранилища данных
 - `knowledge_base/` — KB (markdown), главная папка `members/`. **Рантайм-данные вне git** (профили, `INDEX.md`, `embeddings_cache.json` — в `.gitignore`; `INDEX.md` самовосстанавливается из шаблона в `kb_save.py`).
@@ -130,7 +131,7 @@ cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot delo
 ### Принятые решения
 - **`handlers.py`** экспортирует `register_handlers(dp, bot, bot_id, bot_username)`; `main.py` берёт личность бота из `bot.get_me()`.
 - **Endpoint MAX:** `platform-api.max.ru` (серт Let's Encrypt). `platform-api2.max.ru` требует российский УЦ Минцифры (нет в certifi) — НЕ используем. Переопределяется `MAX_API_URL`.
-- **Онбординг:** триггер — `BotStarted` (нажатие «Начать») + `/start` + @упоминание.
+- **Онбординг:** триггер — `BotStarted` (нажатие «Начать») + `/start` + @упоминание. Вопросы (6 шт.) заданы дословно в `SYSTEM_PROMPT`, на «вы».
 - **Упоминание в группе:** `@username` в тексте, **слово «делорос»** в тексте (регистронезависимо), `USER_MENTION` в `body.markup` по `user_id` бота, либо reply на бота. Слово «делорос» сработает только если бот — админ чата (иначе MAX privacy-режим шлёт лишь @упоминания).
 - **Голос:** работает ТОЛЬКО на webhook-транспорте — по long-poll MAX шлёт пустой `message_created` без аудио (подтверждено на HTTP-уровне и сравнением с vAptekeMaxBot). `_handle_audio`: если `transcription` есть — берём её; иначе скачиваем по `payload.url` и распознаём через Whisper (`tools/voice_transcribe.py`, `whisper-1`).
 - **Webhook:** `MAX_TRANSPORT=webhook` в `.env` → `AiohttpMaxWebhook` (maxapi) на порту `MAX_WEBHOOK_PORT=8088`, публичный URL `MAX_WEBHOOK_URL`, секрет `MAX_WEBHOOK_SECRET` (MAX шлёт его в `X-Max-Bot-Api-Secret`, maxapi проверяет сам, чужие POST → 403). Подписка при старте: `delete_webhook` → `subscribe_webhook`. Режим polling остаётся дефолтом (для локальной отладки) и сам снимает webhook-подписку.
@@ -141,7 +142,8 @@ cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot delo
 - **Поиск:** семантический (`tools/embeddings.py`, gpt-эмбеддинги), порог сходства 0.2, подстрочный фолбэк при сбое OpenAI.
 - **KB вне git:** профили/INDEX/кэш векторов в `.gitignore` (приватность + чтобы рантайм-записи не конфликтовали с `git pull`). `INDEX.md` самовосстанавливается.
 - **Вход в панель:** по телефону+паролю участников с галочкой «админ» (хеш pbkdf2 в `admins.json`, вне git). Не из `.env`. Бутстрап первого админа — `tools.admins.set_admin(phone, pw)`.
-- **Уведомления:** `notify_participants` (только админ) → `add_reminder(..., targets=[user_id])` → `scheduler` шлёт в личку каждому. Адресат резолвится `agent._resolve_targets` (all / имя / телефон по реестру+`verified_users`).
+- **Уведомления/сообщения участникам:** три сценария, агент различает по времени. «Сейчас» → `send_message_now` (мгновенно, `_execute_tool` асинхронный, шлёт через переданный в `run_agent` `bot`; одному — любой подтверждённый, all — только админ; с указанием отправителя). «Такого-то числа в личку» → `notify_participants` (только админ) → `add_reminder(targets=[...])` → `scheduler` шлёт каждому. «В этот чат» → `schedule_message`. Адресат резолвится `agent._resolve_targets` (all / имя / телефон по реестру+`verified_users`), доходит только до подтвердивших телефон.
+- **Тон общения:** бот всегда на «вы»; в `SYSTEM_PROMPT` правило писать на грамотном русском (после случая с ошибкой «чем ты ищешь»). Вопросы онбординга заданы в `SYSTEM_PROMPT` ДОСЛОВНО (6 формулировок), а не списком тем — чтобы модель не импровизировала и не делала грамматических ошибок.
 - **Связка участника:** реестр (телефон) ↔ `verified_users.json` (`user_id`+`username`, пишется при верификации) ↔ профиль `members/<slug имени>.md` ↔ расходы/логи (по имени и `@username`). Агрегация — `panel/data.py`.
 - **Рантайм вне git:** `roster.md`, `verified_users.json`, `admins.json`, `INDEX.md`, `embeddings_cache.json`, `*.jsonl`.
 - **`.env`:** `MAX_TOKEN`; `OPENAI_API_KEY` (`OPENAI_MODEL`/`OPENAI_BASE_URL`/`OPENAI_EMBED_MODEL` опц.); `PANEL_SECRET_KEY`; `PROXY_URL` — только для OpenAI.
