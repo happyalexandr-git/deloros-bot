@@ -33,12 +33,60 @@ def _extract_pdf(file_path: Path) -> str:
         return f"Ошибка при чтении PDF: {e}"
 
 
+def _iter_blocks(parent):
+    """Абзацы и таблицы в порядке следования в документе.
+
+    docx.Document.paragraphs НЕ включает текст таблиц, а анкеты часто
+    свёрстаны таблицами — без этого терялась основная часть содержимого.
+    """
+    from docx.document import Document as _Document
+    from docx.oxml.table import CT_Tbl
+    from docx.oxml.text.paragraph import CT_P
+    from docx.table import Table, _Cell
+    from docx.text.paragraph import Paragraph
+
+    if isinstance(parent, _Document):
+        parent_elm = parent.element.body
+    elif isinstance(parent, _Cell):
+        parent_elm = parent._tc
+    else:
+        return
+    for child in parent_elm.iterchildren():
+        if isinstance(child, CT_P):
+            yield Paragraph(child, parent)
+        elif isinstance(child, CT_Tbl):
+            yield Table(child, parent)
+
+
+def _table_lines(table) -> list[str]:
+    """Строки таблицы как «ячейка | ячейка» (объединённые ячейки не дублируем)."""
+    lines = []
+    for row in table.rows:
+        cells = []
+        for cell in row.cells:
+            text = " ".join(cell.text.split())
+            if text and (not cells or cells[-1] != text):
+                cells.append(text)
+        if cells:
+            lines.append(" | ".join(cells))
+    return lines
+
+
 def _extract_docx(file_path: Path) -> str:
     try:
         from docx import Document
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+
         doc = Document(str(file_path))
-        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-        return "\n\n".join(paragraphs)
+        parts: list[str] = []
+        for block in _iter_blocks(doc):
+            if isinstance(block, Paragraph):
+                if block.text.strip():
+                    parts.append(block.text.strip())
+            elif isinstance(block, Table):
+                parts.extend(_table_lines(block))
+        return "\n\n".join(parts)
     except Exception as e:
         return f"Ошибка при чтении DOCX: {e}"
 
