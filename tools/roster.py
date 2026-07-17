@@ -154,6 +154,27 @@ def update_member(
     return "ok"
 
 
+def _name_tokens(name: str) -> set[str]:
+    return {t for t in re.split(r"[^\w]+", (name or "").lower().replace("ё", "е")) if t}
+
+
+def canonical_name(name: str) -> str:
+    """Приводит имя к ФИО из реестра, если оно опознаётся однозначно.
+
+    Бот при онбординге сохраняет профиль под тем именем, которым человек
+    представился («Оксана Владимировна»), и профиль не связывался с записью
+    реестра («Козец Оксана Владимировна») — панель ищет файл по ФИО.
+    Возвращаем ФИО из реестра, только если все токены имени нашлись ровно
+    у одного участника; при неоднозначности или отсутствии — имя как есть
+    (не угадываем).
+    """
+    tokens = _name_tokens(name)
+    if not tokens:
+        return name
+    matches = [m["name"] for m in load_roster() if tokens <= _name_tokens(m["name"])]
+    return matches[0] if len(matches) == 1 else name
+
+
 def find_member_by_phone(phone: str) -> dict | None:
     """Ищет члена клуба по телефону (нормализованное сравнение)."""
     norm = normalize_phone(phone)

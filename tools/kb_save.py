@@ -65,6 +65,12 @@ def save_to_kb(
     if category not in CATEGORY_MAP:
         return f"Неизвестная категория: {category}. Доступны: {', '.join(CATEGORY_MAP)}"
 
+    # Профиль участника сохраняем под ФИО из реестра — иначе он не свяжется
+    # со страницей участника в панели (она ищет файл по slug ФИО).
+    if category == "member":
+        from tools.roster import canonical_name
+        name = canonical_name(name)
+
     folder = KB_PATH / CATEGORY_MAP[category]
     folder.mkdir(parents=True, exist_ok=True)
 
