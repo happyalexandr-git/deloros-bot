@@ -12,3 +12,8 @@ uvicorn
 jinja2
 python-multipart
 itsdangerous
+# Локальная транскрибация голоса (GigaAM v3 int8 ONNX) — бесплатно, без API
+onnxruntime
+librosa
+soundfile
+numpy==2.2.6

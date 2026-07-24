@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -382,17 +383,23 @@ async def _handle_contact(event: MessageCreated, contact, user_id):
 async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, username: str, reply: bool = True):
     # 1) если MAX приложил транскрипцию — берём бесплатно
     text = (getattr(audio, "transcription", None) or "").strip()
-    # 2) иначе скачиваем аудио и распознаём через Whisper
+    # 2) иначе скачиваем аудио и распознаём локально через GigaAM (бесплатно);
+    #    если модель недоступна — фолбэк на OpenAI Whisper
     if not text:
         url = _payload_url(audio)
-        if url and os.environ.get("OPENAI_API_KEY"):
+        if url:
             local_path = UPLOADS_PATH / f"voice_{uuid.uuid4().hex}.ogg"
             try:
                 if reply:
                     await _typing(bot, chat_id)
                 await _download(url, local_path)
-                from tools.voice_transcribe import transcribe_voice
-                text = (transcribe_voice(local_path) or "").strip()
+                from tools.voice_gigaam import available, transcribe_voice_local
+                # Инференс — синхронная CPU-работа, выносим в поток, чтобы не блокировать бота
+                if available():
+                    text = (await asyncio.to_thread(transcribe_voice_local, local_path) or "").strip()
+                elif os.environ.get("OPENAI_API_KEY"):
+                    from tools.voice_transcribe import transcribe_voice
+                    text = (await asyncio.to_thread(transcribe_voice, local_path) or "").strip()
             except Exception as e:
                 logger.error(f"Ошибка транскрибации голоса: {e}")
             finally:
