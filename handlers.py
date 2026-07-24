@@ -300,9 +300,7 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             # Пассивно сохраняем весь текст группы в лог (память/метчинг по истории)
             if text:
                 save_message(chat_id, username, text)
-            # В группе реагируем (на текст И на вложения) только по @упоминанию/reply
-            if not _is_mentioned(msg):
-                return
+            mentioned = _is_mentioned(msg)
         else:
             # Личка: доступ только подтверждённым участникам клуба
             if not is_verified(user_id):
@@ -310,28 +308,35 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
                     NEED_PHONE_PROMPT, parse_mode=ParseMode.MARKDOWN, attachments=[_contact_kb()]
                 )
                 return
+            mentioned = True  # в личке всё «по запросу»
 
         caption = _clean_mention(text) if is_group else text
+
+        # Вложения обрабатываем ВСЕГДА (бот админ группы — видит всё). Документы всегда
+        # сохраняются и получают краткий ответ; голос/картинки без упоминания молча
+        # распознаём в лог, отвечаем на них только по упоминанию.
 
         # 1) Голос/аудио — MAX присылает транскрипцию в самом вложении
         audio = next((a for a in atts if getattr(a, "type", None) == AttachmentType.AUDIO), None)
         if audio is not None:
-            await _handle_audio(event, bot, audio, chat_id, username)
+            await _handle_audio(event, bot, audio, chat_id, username, reply=mentioned)
             return
 
-        # 2) Документ — резюме→профиль, встреча/исследование→своя категория
+        # 2) Документ — сохраняем + краткий ответ; полный разбор только по упоминанию/в личке
         doc = next((a for a in atts if getattr(a, "type", None) == AttachmentType.FILE), None)
         if doc is not None:
-            await _handle_document(event, bot, doc, chat_id, username, caption)
+            await _handle_document(event, bot, doc, chat_id, username, caption, deep=mentioned)
             return
 
         # 3) Картинка — gpt-4o vision описывает/извлекает текст, дальше как обычный запрос
         image = next((a for a in atts if getattr(a, "type", None) == AttachmentType.IMAGE), None)
         if image is not None:
-            await _handle_image(event, bot, image, chat_id, username, caption, user_id)
+            await _handle_image(event, bot, image, chat_id, username, caption, user_id, reply=mentioned)
             return
 
-        # 4) Текст
+        # 4) Текст — в группе отвечаем только по упоминанию
+        if not mentioned:
+            return
         if not text:
             return
         clean_text = caption
@@ -374,7 +379,7 @@ async def _handle_contact(event: MessageCreated, contact, user_id):
         await event.message.answer(NOT_IN_ROSTER, parse_mode=ParseMode.MARKDOWN)
 
 
-async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, username: str):
+async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, username: str, reply: bool = True):
     # 1) если MAX приложил транскрипцию — берём бесплатно
     text = (getattr(audio, "transcription", None) or "").strip()
     # 2) иначе скачиваем аудио и распознаём через Whisper
@@ -383,7 +388,8 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
         if url and os.environ.get("OPENAI_API_KEY"):
             local_path = UPLOADS_PATH / f"voice_{uuid.uuid4().hex}.ogg"
             try:
-                await _typing(bot, chat_id)
+                if reply:
+                    await _typing(bot, chat_id)
                 await _download(url, local_path)
                 from tools.voice_transcribe import transcribe_voice
                 text = (transcribe_voice(local_path) or "").strip()
@@ -392,9 +398,10 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
             finally:
                 local_path.unlink(missing_ok=True)
     if not text:
-        await event.message.answer(
-            "Не смог распознать голосовое. Можете продублировать сообщением?"
-        )
+        if reply:
+            await event.message.answer(
+                "Не смог распознать голосовое. Можете продублировать сообщением?"
+            )
         return
 
     log_voice_usage(
@@ -403,6 +410,13 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
         username=username,
         duration_seconds=0,
     )
+    # Распознанное всегда пишем в лог чата — для контекста и метчинга
+    save_message(chat_id, username, text)
+
+    # Без упоминания (в группе) — только распознали и залогировали, не отвечаем
+    if not reply:
+        return
+
     await event.message.answer(f"🎙 Распознано: _{text}_", parse_mode=ParseMode.MARKDOWN)
 
     await _typing(bot, chat_id)
@@ -423,14 +437,16 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
 
 
 async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
-                        username: str, caption: str = "", user_id=None):
+                        username: str, caption: str = "", user_id=None, reply: bool = True):
     """Распознаёт изображение через gpt-4o vision, затем отвечает как на текст."""
     url = _payload_url(image)
     if not url or not os.environ.get("OPENAI_API_KEY"):
-        await event.message.answer("Не удалось получить изображение.")
+        if reply:
+            await event.message.answer("Не удалось получить изображение.")
         return
 
-    await _typing(bot, chat_id)
+    if reply:
+        await _typing(bot, chat_id)
     local_path = UPLOADS_PATH / f"image_{uuid.uuid4().hex}"
     try:
         await _download(url, local_path)
@@ -439,13 +455,22 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
         description = describe_image(image_bytes, caption).strip()
     except Exception as e:
         logger.error(f"Ошибка распознавания изображения: {e}")
-        await event.message.answer("Не смог разобрать изображение. Попробуйте ещё раз или опишите текстом.")
+        if reply:
+            await event.message.answer("Не смог разобрать изображение. Попробуйте ещё раз или опишите текстом.")
         return
     finally:
         local_path.unlink(missing_ok=True)
 
     if not description:
-        await event.message.answer("Не смог разобрать изображение. Попробуйте ещё раз или опишите текстом.")
+        if reply:
+            await event.message.answer("Не смог разобрать изображение. Попробуйте ещё раз или опишите текстом.")
+        return
+
+    # Распознанное содержимое картинки пишем в лог чата — для контекста и метчинга
+    save_message(chat_id, username, f"[изображение] {description}")
+
+    # Без упоминания (в группе) — только распознали и залогировали, не отвечаем
+    if not reply:
         return
 
     # Собираем запрос агенту: вопрос пользователя (если был) + что на картинке.
@@ -473,7 +498,11 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
         await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
 
 
-async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, username: str, caption: str = ""):
+async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, username: str,
+                           caption: str = "", deep: bool = True):
+    """Обрабатывает документ. Всегда сохраняет в базу (→ панель) и кратко отвечает
+    (кол-во знаков + о чём). deep=True (упоминание/личка) — плюс полный разбор
+    агентом (резюме→профиль, протокол→встреча и т.д.)."""
     original_name = getattr(doc, "filename", None) or "document"
     suffix = Path(original_name).suffix.lower()
 
@@ -489,9 +518,6 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
         await event.message.answer("Не удалось получить файл (нет ссылки на скачивание).")
         return
 
-    await event.message.answer(
-        f"Получил файл `{original_name}` — обрабатываю...", parse_mode=ParseMode.MARKDOWN
-    )
     await _typing(bot, chat_id)
 
     local_path = UPLOADS_PATH / original_name
@@ -509,7 +535,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             return
 
         result = process_document(local_path, original_name, username)
-        # Сырой текст сохраняем в KB как документ — для полнотекстового поиска
+        # Сырой текст сохраняем в KB как документ — для полнотекстового поиска и панели
         save_to_kb(
             category="document",
             name=original_name,
@@ -518,11 +544,31 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
         )
         local_path.unlink(missing_ok=True)
 
-        if result["text_length"] == 0:
+        chars = result["text_length"]
+        if chars == 0:
             await event.message.answer(
                 f"Файл `{original_name}` получил, но не смог извлечь из него текст.",
                 parse_mode=ParseMode.MARKDOWN,
             )
+            return
+
+        # Краткий ответ всегда: сколько знаков + о чём документ
+        summary = ""
+        if os.environ.get("OPENAI_API_KEY"):
+            try:
+                from tools.summarize import short_summary
+                summary = short_summary(result["content"])
+            except Exception as e:
+                logger.error(f"Ошибка резюме документа: {e}")
+        about = f"\nО чём: {summary}" if summary else ""
+        chars_str = f"{chars:,}".replace(",", " ")  # 12 345
+        await event.message.answer(
+            f"📄 Получил документ `{original_name}` — {chars_str} знаков.{about}",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        # Полный разбор (профиль/встреча/исследование) — только по упоминанию или в личке
+        if not deep:
             return
 
         # Передаём содержимое агенту: он сам определяет тип и категорию KB.
