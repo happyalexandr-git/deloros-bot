@@ -91,6 +91,11 @@ git clone https://github.com/happyalexandr-git/deloros-bot.git
 cd deloros-bot
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env          # вписать MAX_TOKEN + OPENAI_API_KEY (+ TAVILY_API_KEY)
+# Голос: локальная транскрибация GigaAM — нужны ffmpeg и модель (~214 МБ, вне git):
+sudo apt-get install -y ffmpeg
+# модель скопировать вручную (с рабочей машины) в models/giga-am-v3-int8/:
+#   scp <handy>/models/giga-am-v3-int8/{model.int8.onnx,vocab.txt} srv001:/home/alex/deloros_bot/models/giga-am-v3-int8/
+# без модели/ffmpeg бот сам падает на фолбэк — OpenAI Whisper (если есть OPENAI_API_KEY)
 sudo cp deploy/deloros-bot.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now deloros-bot
@@ -136,7 +141,7 @@ cd /home/alex/deloros_bot && git pull && sudo systemctl restart deloros-bot delo
 - **Endpoint MAX:** `platform-api.max.ru` (серт Let's Encrypt). `platform-api2.max.ru` требует российский УЦ Минцифры (нет в certifi) — НЕ используем. Переопределяется `MAX_API_URL`.
 - **Онбординг:** триггер — `BotStarted` (нажатие «Начать») + `/start` + @упоминание. Вопросы (6 шт.) заданы дословно в `SYSTEM_PROMPT`, на «вы». **Интервью только в личке:** `run_agent` дописывает в системное сообщение, где идёт разговор (по `chat_type`) — раньше модель этого не знала. В группе на «добавь меня» бот не задаёт вопросы, а одним сообщением зовёт в личку на https://max.ru/deloros_bot; в личке ссылку на себя давать запрещено (иначе модель перетягивала правило и слала ссылку вместо интервью).
 - **Упоминание в группе:** `@username` в тексте, **слово «делорос»** в тексте (регистронезависимо), `USER_MENTION` в `body.markup` по `user_id` бота, либо reply на бота. Слово «делорос» сработает только если бот — админ чата (иначе MAX privacy-режим шлёт лишь @упоминания).
-- **Голос:** работает ТОЛЬКО на webhook-транспорте — по long-poll MAX шлёт пустой `message_created` без аудио (подтверждено на HTTP-уровне и сравнением с vAptekeMaxBot). `_handle_audio`: если `transcription` есть — берём её; иначе скачиваем по `payload.url` и распознаём через Whisper (`tools/voice_transcribe.py`, `whisper-1`).
+- **Голос:** работает ТОЛЬКО на webhook-транспорте — по long-poll MAX шлёт пустой `message_created` без аудио (подтверждено на HTTP-уровне и сравнением с vAptekeMaxBot). `_handle_audio`: если `transcription` от MAX есть — берём её (бесплатно); иначе скачиваем по `payload.url` и распознаём **локально через GigaAM v3 int8 ONNX** (`tools/voice_gigaam.py`, CPU, бесплатно) — инференс в `asyncio.to_thread` (синхронный ONNX не должен блокировать бот). Модель (~214 МБ) вне git в `models/giga-am-v3-int8/` (env `GIGAAM_MODEL_DIR`), нужен системный `ffmpeg`. Если модели/ffmpeg нет — `available()` False, фолбэк на OpenAI Whisper (`tools/voice_transcribe.py`). Прогретый инференс ~0.3–0.6x реального времени (8 CPU); разовая загрузка модели ~3с (кэш `lru_cache`).
 - **Webhook:** `MAX_TRANSPORT=webhook` в `.env` → `AiohttpMaxWebhook` (maxapi) на порту `MAX_WEBHOOK_PORT=8088`, публичный URL `MAX_WEBHOOK_URL`, секрет `MAX_WEBHOOK_SECRET` (MAX шлёт его в `X-Max-Bot-Api-Secret`, maxapi проверяет сам, чужие POST → 403). Подписка при старте: `delete_webhook` → `subscribe_webhook`. Режим polling остаётся дефолтом (для локальной отладки) и сам снимает webhook-подписку.
 - **Документы:** скачиваются по `attachment.payload.url` через `httpx`; агент раскладывает по категории (member/meeting/research/резюме). Сырой текст всегда сохраняется как `document` для поиска. **DOCX читается вместе с таблицами** (`_iter_blocks` обходит body по порядку: абзацы + таблицы, строки как «ячейка | ячейка»): `Document.paragraphs` таблицы не видит, а анкеты часто свёрстаны ими — терялось до 90% содержимого.
 - **Картинки:** ловим `AttachmentType.IMAGE`, скачиваем сами и шлём в gpt-4o vision **base64** (`tools/image_describe.py`) — НЕ по URL (OpenAI не всегда может скачать MAX-ссылку). Описание (что на картинке + извлечённый текст) уходит агенту как текст, подпись-вопрос фокусирует. `_handle_image` в handlers.py.
