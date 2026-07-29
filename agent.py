@@ -53,6 +53,7 @@ SYSTEM_PROMPT = """Ты — Делорос, ассистент чата сооб
 - Перед ответом о том, что обсуждалось/кто что говорил — ОБЯЗАТЕЛЬНО search_chat_log.
 - Перед ответом о людях и компетенциях — сначала search_kb(category="members").
 - Профили и важные сущности сохраняй через save_to_kb, заполняя related (связанные участники/компании/темы).
+- ВАЖНО про онбординг и вовлечённость: наличие профиля в базе знаний НЕ означает, что человек прошёл онбординг у тебя — большинство профилей внесены АДМИНОМ из анкет. На вопросы «кто прошёл онбординг / кто общается с тобой лично / кто подтвердил телефон / кто из группы тебе писал» — ОБЯЗАТЕЛЬНО вызывай engagement_status и отвечай строго по нему, точными фактами: кто подтвердил телефон, кто писал в личке; НЕ выдавай наличие профиля за пройденный онбординг и не выдумывай.
 
 Правила поведения:
 - Общаешься на русском, ВСЕГДА на «вы» (вежливое обращение к участнику), лаконично, структурированно, markdown.
@@ -226,6 +227,11 @@ _TOOL_DEFS = [
         },
     },
     {
+        "name": "engagement_status",
+        "description": "Реальная статистика вовлечённости участников: кто подтвердил телефон в личке (= лично взаимодействовал с ботом), кто писал боту в личке, у кого есть профиль. ОБЯЗАТЕЛЬНО используй на вопросы «кто прошёл онбординг», «кто общается/работает с ботом», «кто подтвердил телефон», «кто из группы писал тебе лично». Наличие профиля в базе НЕ означает пройденный онбординг.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "send_message_now",
         "description": "Немедленно отправить сообщение участнику клуба в ЛИЧКУ (без ожидания времени). Используй, когда просят передать/написать что-то другому участнику прямо сейчас — например «напиши привет Иванову». target — имя/фамилия или телефон участника; 'all' (всем сразу) — ТОЛЬКО для админа. Адресат получит сообщение с указанием, от кого оно.",
         "input_schema": {
@@ -314,6 +320,56 @@ def _trim_history(history: list[dict]) -> list[dict]:
     return trimmed
 
 
+def _engagement_status() -> str:
+    """Реальная вовлечённость участников: кто подтвердил телефон, кто писал боту
+    в личке, у кого есть профиль. Профиль ≠ онбординг (часть внесена админом)."""
+    from tools.access import all_verified
+    from tools.roster import load_roster
+    from tools.kb_search import KB_PATH
+
+    roster = load_roster()
+    verified = all_verified()
+
+    # Личка-активность из usage.jsonl: сколько обращений к боту в личке по каждому нику/имени
+    usage_path = Path(__file__).parent / "usage.jsonl"
+    dialog = {}
+    if usage_path.exists():
+        for line in usage_path.read_text(encoding="utf-8").splitlines():
+            try:
+                e = json.loads(line)
+            except Exception:
+                continue
+            if e.get("service") == "whisper":
+                continue
+            if "dialog" in (e.get("chat_type") or "").lower():
+                u = (e.get("username") or "").strip()
+                if u:
+                    dialog[u] = dialog.get(u, 0) + 1
+
+    def dialog_count(v):
+        u = (v.get("username") or "")
+        return dialog.get("@" + u, 0) + dialog.get(u, 0) + dialog.get(v.get("name", ""), 0)
+
+    members_dir = KB_PATH / "members"
+    profiles = sorted(f.stem.replace("_", " ") for f in members_dir.glob("*.md")) if members_dir.exists() else []
+
+    lines = ["Реальная вовлечённость (по данным бота, НЕ по наличию профиля):", ""]
+    lines.append(f"Всего в реестре: {len(roster)}.")
+    lines.append("")
+    if verified:
+        lines.append(f"Подтвердили телефон в личке — {len(verified)} (это и есть те, кто лично взаимодействовал с ботом):")
+        for v in verified:
+            n = dialog_count(v)
+            extra = f" — писал(а) боту в личке, {n} обращ." if n else " — только подтвердил(а) телефон"
+            lines.append(f"  • {v.get('name','?')}{extra}")
+    else:
+        lines.append("Телефон в личке пока никто не подтвердил.")
+    lines.append("")
+    lines.append(f"Профили в базе знаний — {len(profiles)}. ВАЖНО: большинство внесено АДМИНОМ из анкет, это НЕ значит, что человек прошёл онбординг у бота:")
+    lines.append("  " + ", ".join(profiles) if profiles else "  (профилей нет)")
+    return "\n".join(lines)
+
+
 def _resolve_targets(target: str) -> tuple[list[int], str]:
     """Превращает спецификацию получателя в список user_id для личных уведомлений."""
     from tools.access import all_verified, by_phone
@@ -376,6 +432,8 @@ async def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0,
             text=tool_input["text"],
             send_at=tool_input["send_at"],
         )
+    if tool_name == "engagement_status":
+        return _engagement_status()
     if tool_name == "send_message_now":
         target = tool_input["target"]
         text = tool_input["text"]

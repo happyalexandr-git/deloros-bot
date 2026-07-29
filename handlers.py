@@ -43,6 +43,14 @@ MAX_DOC_CHARS = 8000
 # Личность бота, заполняется в register_handlers из bot.get_me()
 _BOT_ID: int = 0
 _BOT_USERNAME: str = ""
+BOT_LOG_NAME = "Делорос (бот)"  # под этим именем ответы бота пишутся в chat_log
+
+
+async def _reply(event: MessageCreated, chat_id: int, text: str, **kwargs):
+    """Отправляет ответ пользователю И пишет его в лог чата (для анализа качества общения)."""
+    await event.message.answer(text, **kwargs)
+    if text:
+        save_message(chat_id, BOT_LOG_NAME, text)
 
 # Тексты гейта по телефону
 WELCOME_PROMPT = (
@@ -271,7 +279,7 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             is_admin=_is_admin_uid(msg.sender.user_id if msg.sender else None),
             bot=bot,
         )
-        await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
+        await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
 
     @dp.message_created(Command("stats"))
     async def cmd_stats(event: MessageCreated):
@@ -310,6 +318,9 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
                 )
                 return
             mentioned = True  # в личке всё «по запросу»
+            # Личные сообщения тоже пишем в лог — для анализа качества общения
+            if text:
+                save_message(chat_id, username, text)
 
         caption = _clean_mention(text) if is_group else text
 
@@ -355,7 +366,7 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
                 is_admin=_is_admin_uid(user_id),
                 bot=bot,
             )
-            await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
+            await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             logger.error(f"Ошибка агента: {e}")
             await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
@@ -437,7 +448,7 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
             kind="voice",
             bot=bot,
         )
-        await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
+        await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка агента (голос): {e}")
         await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
@@ -499,7 +510,7 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
             kind="image",
             bot=bot,
         )
-        await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
+        await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка агента (картинка): {e}")
         await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
@@ -569,7 +580,8 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
                 logger.error(f"Ошибка резюме документа: {e}")
         about = f"\nО чём: {summary}" if summary else ""
         chars_str = f"{chars:,}".replace(",", " ")  # 12 345
-        await event.message.answer(
+        await _reply(
+            event, chat_id,
             f"📄 Получил документ `{original_name}` — {chars_str} знаков.{about}",
             parse_mode=ParseMode.MARKDOWN,
         )
@@ -610,7 +622,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             is_admin=_is_admin_uid(event.message.sender.user_id if event.message.sender else None),
             bot=bot,
         )
-        await event.message.answer(response, parse_mode=ParseMode.MARKDOWN)
+        await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка обработки файла: {e}")
         local_path.unlink(missing_ok=True)
