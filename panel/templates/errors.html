@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+  <h1 style="margin:0">Журнал ошибок</h1>
+  {% if errors %}
+  <form method="post" action="/errors/clear" onsubmit="return confirm('Очистить весь журнал ошибок?')">
+    <button type="submit" style="padding:8px 14px;border:1px solid var(--cardb);border-radius:10px;background:var(--card);cursor:pointer;font-size:13px">Очистить</button>
+  </form>
+  {% endif %}
+</div>
+<p class="muted" style="font-size:13px;margin-top:6px">Сбои обработки документов, голоса, картинок и агента. Время — Иркутск (UTC+8). Хранятся последние ~500 записей.</p>
+{% if ok %}<div class="card" style="border-color:#4a7">{{ ok }}</div>{% endif %}
+
+{% if errors %}
+  <div class="muted" style="font-size:13px;margin:8px 0">Всего: {{ errors|length }}</div>
+  {% for e in errors %}
+  <div class="card" style="margin-bottom:10px;padding:12px 16px">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px">
+      <span class="muted">{{ e.ts.replace('T', ' ')[:19] }}</span>
+      <span class="badge wait" style="font-size:12px">{{ e.where }}</span>
+      <span><b style="font-weight:500">{{ e.author }}</b></span>
+      {% if e.chat_id %}<span class="muted">chat {{ e.chat_id }}</span>{% endif %}
+    </div>
+    <div style="white-space:pre-wrap;font-size:13px;line-height:1.5;margin-top:6px">{{ e.message }}</div>
+  </div>
+  {% endfor %}
+{% else %}
+  <p class="muted">Ошибок пока нет 🎉</p>
+{% endif %}
+{% endblock %}

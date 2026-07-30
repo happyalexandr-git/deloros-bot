@@ -222,6 +222,25 @@ def document_page(request: Request, slug: str):
     ))
 
 
+@app.get("/errors", response_class=HTMLResponse)
+def errors_page(request: Request, ok: str = ""):
+    if not _authed(request):
+        return RedirectResponse("/login")
+    from tools.error_log import read_errors
+    return templates.TemplateResponse(request, "errors.html", _ctx(
+        request, tab="errors", errors=read_errors(), ok=ok,
+    ))
+
+
+@app.post("/errors/clear")
+def errors_clear(request: Request):
+    if not _authed(request):
+        return RedirectResponse("/login")
+    from tools.error_log import clear_errors
+    clear_errors()
+    return RedirectResponse("/errors?ok=Журнал очищен", status_code=303)
+
+
 @app.get("/about", response_class=HTMLResponse)
 def about(request: Request):
     if not _authed(request):

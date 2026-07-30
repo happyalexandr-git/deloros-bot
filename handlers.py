@@ -19,6 +19,7 @@ from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 from agent import run_agent
 from tools.usage_log import get_stats, log_voice_usage
 from tools.chat_log import save_message, get_chat_log
+from tools.error_log import log_error as elog
 from tools.kb_save import save_to_kb
 from tools.doc_processor import process_document
 from tools.roster import find_member_by_phone, normalize_phone
@@ -369,6 +370,7 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             logger.error(f"Ошибка агента: {e}")
+            elog("agent-текст", e, user_id=user_id, username=username, chat_id=chat_id)
             await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
 
 
@@ -413,6 +415,7 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
                     text = (await asyncio.to_thread(transcribe_voice, local_path) or "").strip()
             except Exception as e:
                 logger.error(f"Ошибка транскрибации голоса: {e}")
+                elog("голос-транскрибация", e, username=username, chat_id=chat_id)
             finally:
                 local_path.unlink(missing_ok=True)
     if not text:
@@ -451,6 +454,7 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
         await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка агента (голос): {e}")
+        elog("agent-голос", e, username=username, chat_id=chat_id)
         await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
 
 
@@ -473,6 +477,7 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
         description = describe_image(image_bytes, caption).strip()
     except Exception as e:
         logger.error(f"Ошибка распознавания изображения: {e}")
+        elog("картинка-распознавание", e, user_id=user_id, username=username, chat_id=chat_id)
         if reply:
             await event.message.answer("Не смог разобрать изображение. Попробуйте ещё раз или опишите текстом.")
         return
@@ -513,6 +518,7 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
         await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка агента (картинка): {e}")
+        elog("agent-картинка", e, user_id=user_id, username=username, chat_id=chat_id)
         await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
 
 
@@ -553,6 +559,10 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             return
 
         result = process_document(local_path, original_name, username)
+        # «Тихая» ошибка чтения (extract_text вернул строку-ошибку без исключения, напр. старый .doc)
+        _prev = (result.get("preview") or "").lstrip()
+        if _prev.startswith(("Ошибка при чтении", "Файл в старом формате", "Формат ")):
+            elog("документ-чтение", f"{original_name}: {_prev[:300]}", username=username, chat_id=chat_id)
         # Сырой текст сохраняем в KB как документ — для полнотекстового поиска и панели
         save_to_kb(
             category="document",
@@ -578,6 +588,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
                 summary = short_summary(result["content"])
             except Exception as e:
                 logger.error(f"Ошибка резюме документа: {e}")
+                elog("документ-резюме", e, username=username, chat_id=chat_id)
         about = f"\nО чём: {summary}" if summary else ""
         chars_str = f"{chars:,}".replace(",", " ")  # 12 345
         await _reply(
@@ -625,5 +636,6 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
         await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка обработки файла: {e}")
+        elog("документ-обработка", e, username=username, chat_id=chat_id)
         local_path.unlink(missing_ok=True)
         await event.message.answer(f"Не удалось обработать файл: {e}")
