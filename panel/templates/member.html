@@ -47,7 +47,7 @@
   <div style="font-weight:500;margin-bottom:8px">Документы участника</div>
   {% if docs %}
     {% for d in docs %}
-    <div class="row"><span>{{ d.name }}</span><span class="muted">{{ d.uploaded }}</span></div>
+    <a class="row" href="/document/{{ d.slug }}" style="color:inherit;text-decoration:none"><span>{{ d.name }}</span><span class="muted">{{ d.uploaded }}</span></a>
     {% endfor %}
   {% else %}<p class="muted">Документов не загружал.</p>{% endif %}
 </div>

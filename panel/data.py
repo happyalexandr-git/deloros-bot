@@ -79,7 +79,7 @@ def usage_for(idents: set[str], days: int = 90) -> dict:
 
 def _parse_doc(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
-    meta = {"name": path.stem.replace("_", " "), "uploaded": "", "by": "", "file": ""}
+    meta = {"slug": path.stem, "name": path.stem.replace("_", " "), "uploaded": "", "by": "", "file": ""}
     for line in text.splitlines():
         s = line.strip()
         if s.startswith("- Файл:"):
@@ -89,6 +89,27 @@ def _parse_doc(path: Path) -> dict:
         elif s.startswith("- Загрузил:"):
             meta["by"] = s.split(":", 1)[1].strip()
     return meta
+
+
+def document_content(slug: str) -> dict | None:
+    """Документ по slug (stem файла) с распознанным текстом. None, если нет/некорректен."""
+    if not DOCS_DIR.exists():
+        return None
+    path = (DOCS_DIR / f"{slug}.md").resolve()
+    if path.parent != DOCS_DIR.resolve() or not path.is_file():
+        return None  # защита от обхода пути
+    doc = _parse_doc(path)
+    text = path.read_text(encoding="utf-8")
+    # Берём раздел «## Содержимое» (то, что реально прочитал бот)
+    marker = "## Содержимое"
+    if marker in text:
+        content = text.split(marker, 1)[1].strip()
+    else:
+        # фолбэк: тело без YAML-фронтматтера
+        parts = text.split("---", 2)
+        content = (parts[2] if len(parts) == 3 else text).strip()
+    doc["content"] = content
+    return doc
 
 
 def documents_all() -> list[dict]:

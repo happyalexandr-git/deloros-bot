@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+  <a href="/documents" class="muted" style="font-size:14px">← Документы</a>
+</div>
+<h1>{{ doc.name }}</h1>
+<div class="muted" style="font-size:14px;margin-top:-6px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:4px 16px">
+  {% if doc.by %}<span>Загрузил: {{ doc.by }}</span>{% endif %}
+  {% if doc.uploaded %}<span>Дата: {{ doc.uploaded }}</span>{% endif %}
+  {% if doc.file %}<span>Файл: {{ doc.file }}</span>{% endif %}
+</div>
+
+<div class="card">
+  <div style="font-weight:500;margin-bottom:8px">Распознанный текст (что прочитал бот)</div>
+  <div style="white-space:pre-wrap;font-size:14px;line-height:1.6">{{ doc.content }}</div>
+</div>
+{% endblock %}

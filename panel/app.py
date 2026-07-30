@@ -210,6 +210,18 @@ def documents_page(request: Request):
     ))
 
 
+@app.get("/document/{slug}", response_class=HTMLResponse)
+def document_page(request: Request, slug: str):
+    if not _authed(request):
+        return RedirectResponse("/login")
+    doc = data.document_content(slug)
+    if not doc:
+        return RedirectResponse("/documents?error=Документ не найден", status_code=303)
+    return templates.TemplateResponse(request, "document.html", _ctx(
+        request, tab="documents", doc=doc,
+    ))
+
+
 @app.get("/about", response_class=HTMLResponse)
 def about(request: Request):
     if not _authed(request):
