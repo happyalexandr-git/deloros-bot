@@ -5,6 +5,15 @@ from collections import defaultdict
 
 USAGE_PATH = Path(__file__).parent.parent / "usage.jsonl"
 
+# Служебные ники для отладочных прогонов: их обращения НЕ попадают в usage.jsonl,
+# чтобы проверки разработчика не искажали метрики панели (обращения, активность).
+_TEST_PREFIXES = ("@test", "@тест", "@debug", "@отладк")
+
+
+def is_test_user(username: str | None) -> bool:
+    u = (username or "").strip().lower()
+    return u.startswith(_TEST_PREFIXES)
+
 # OpenAI gpt-4o pricing (USD per million tokens)
 PRICE_INPUT = 2.5
 PRICE_OUTPUT = 10.0
@@ -21,6 +30,8 @@ def log_usage(
     output_tokens: int,
     kind: str = "text",
 ) -> None:
+    if is_test_user(username):
+        return  # отладочный прогон — в статистику не пишем
     cost = (input_tokens * PRICE_INPUT + output_tokens * PRICE_OUTPUT) / 1_000_000
     entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -42,6 +53,8 @@ def log_voice_usage(
     username: str,
     duration_seconds: int,
 ) -> None:
+    if is_test_user(username):
+        return  # отладочный прогон — в статистику не пишем
     cost = duration_seconds * PRICE_WHISPER_PER_SEC
     entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
