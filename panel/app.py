@@ -116,6 +116,7 @@ def roster_page(request: Request, error: str = "", ok: str = ""):
         m["is_admin"] = admins.is_admin(m["phone"])
         m["token"] = m["phone"].lstrip("+")
         m["chairman"] = m["phone"] == CHAIRMAN_PHONE
+        m["progress"] = data.progress(m)
     # председатель — первым, остальные по алфавиту (ё приравниваем к е)
     roster.sort(key=lambda m: (not m["chairman"], m["name"].casefold().replace("ё", "е")))
     return templates.TemplateResponse(request, "roster.html", _ctx(

@@ -28,7 +28,17 @@
 </div>
 
 {% if roster %}
-  <div class="muted" style="font-size:13px;margin-bottom:8px">Всего: {{ roster|length }}</div>
+  <div class="muted" style="font-size:13px;margin-bottom:8px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+    <span>Всего: {{ roster|length }}</span>
+    <span style="display:flex;align-items:center;gap:6px">
+      <span style="display:flex;gap:3px">
+        <span style="width:22px;height:8px;border-radius:4px;background:var(--accent)"></span>
+        <span style="width:22px;height:8px;border-radius:4px;background:var(--accent)"></span>
+        <span style="width:22px;height:8px;border-radius:4px;background:var(--accent)"></span>
+      </span>
+      — прогресс: 1) телефон · 2) профиль собран · 3) онбординг пройден
+    </span>
+  </div>
   {% for m in roster %}
   <div class="card" style="margin-bottom:10px;padding:12px 16px{% if m.chairman %};background:#f4f8ff;border-color:#cddcff;border-left:4px solid var(--accent-deep){% endif %}">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
@@ -36,9 +46,15 @@
         <span style="font-size:11px;font-weight:600;color:#fff;background:var(--accent-deep);padding:3px 10px;border-radius:7px;text-transform:uppercase;letter-spacing:.5px;margin-left:8px;vertical-align:middle">Председатель</span>{% endif %}</a>
       <span class="muted" style="flex:1">{{ m.phone }}</span>
       <span class="muted" style="width:110px;font-size:13px" title="Дата регистрации">{{ m.added or "—" }}</span>
-      <span style="width:104px">
-        {% if m.confirmed %}<span class="badge ok">подтверждён</span>
-        {% else %}<span class="badge wait">ожидает</span>{% endif %}
+      <span style="width:150px;display:flex;align-items:center;gap:8px"
+            title="Шаги: 1) телефон подтверждён · 2) профиль собран · 3) онбординг пройден (профиль заполнен)">
+        <span style="display:flex;gap:3px">
+          {% for s in m.progress.steps %}
+          <span title="{{ s.label }}{{ ' — готово' if s.done else ' — не завершено' }}"
+                style="width:34px;height:8px;border-radius:4px;background:{% if s.done %}var(--accent){% else %}var(--cardb){% endif %}"></span>
+          {% endfor %}
+        </span>
+        <span class="muted" style="font-size:12px">{{ m.progress.filled }}/3</span>
       </span>
       <span style="width:70px">
         {% if m.is_admin %}<span class="badge" style="color:var(--accent-deep);background:var(--accent-bg)">админ</span>{% endif %}

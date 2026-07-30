@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from tools.access import by_phone, all_verified
+from tools.access import by_phone, all_verified, verified_phones
 from tools.kb_search import KB_PATH
 
 IRK = timezone(timedelta(hours=8))  # таймзона филиала (Иркутск, UTC+8)
@@ -49,6 +49,42 @@ def profile(member: dict) -> str | None:
         if end != -1:
             text = text[end + 3:]
     return text.strip()
+
+
+# Темы онбординга — для оценки полноты профиля (сколько из 6 раскрыто)
+_PROGRESS_TOPICS = [
+    ("занятие", ("чем занима", "компания", "должность", "роль")),
+    ("компетенции", ("компетенц", "опыт", "навык")),
+    ("польза", ("полезен",)),
+    ("запрос", ("что ищет", "ищет", "запрос")),
+    ("мотивация", ("зачем пришёл", "зачем пришел", "цели в сообществе", "мотивац")),
+    ("интересы", ("интерес", "хобби")),
+]
+
+
+def _profile_topics_covered(text: str) -> int:
+    low = text.lower()
+    return sum(any(k in low for k in kws) for _, kws in _PROGRESS_TOPICS)
+
+
+def progress(member: dict) -> dict:
+    """Прогресс участника из трёх шагов: телефон подтверждён → профиль собран →
+    онбординг пройден (профиль заполнен по темам). Для шкалы в реестре."""
+    phone_ok = member.get("confirmed")
+    if phone_ok is None:
+        phone_ok = member.get("phone") in verified_phones()
+    text = profile(member)
+    has_profile = bool(text and text.strip())
+    covered = _profile_topics_covered(text) if has_profile else 0
+    total = len(_PROGRESS_TOPICS)
+    complete = has_profile and covered >= total - 1  # допускаем одну незакрытую тему
+    steps = [
+        {"label": "Телефон подтверждён", "done": bool(phone_ok)},
+        {"label": "Профиль собран", "done": has_profile},
+        {"label": "Онбординг пройден — профиль заполнен (%d из %d тем)" % (covered, total), "done": complete},
+    ]
+    return {"steps": steps, "filled": sum(s["done"] for s in steps), "total": len(steps),
+            "covered": covered, "topics_total": total}
 
 
 def usage_for(idents: set[str], days: int = 90) -> dict:
