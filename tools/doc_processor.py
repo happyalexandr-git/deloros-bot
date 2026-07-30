@@ -12,8 +12,10 @@ def extract_text(file_path: Path) -> str:
 
     if suffix == ".pdf":
         return _extract_pdf(file_path)
-    elif suffix in (".docx", ".doc"):
+    elif suffix == ".docx":
         return _extract_docx(file_path)
+    elif suffix == ".doc":
+        return _extract_doc(file_path)
     elif suffix in (".txt", ".md"):
         return file_path.read_text(encoding="utf-8", errors="ignore")
     else:
@@ -72,23 +74,80 @@ def _table_lines(table) -> list[str]:
     return lines
 
 
+def _parse_docx(file_path: Path) -> str:
+    """Парсит .docx (OOXML) через python-docx. Бросает исключение при сбое."""
+    from docx import Document
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    doc = Document(str(file_path))
+    parts: list[str] = []
+    for block in _iter_blocks(doc):
+        if isinstance(block, Paragraph):
+            if block.text.strip():
+                parts.append(block.text.strip())
+        elif isinstance(block, Table):
+            parts.extend(_table_lines(block))
+    return "\n\n".join(parts)
+
+
 def _extract_docx(file_path: Path) -> str:
     try:
-        from docx import Document
-        from docx.table import Table
-        from docx.text.paragraph import Paragraph
-
-        doc = Document(str(file_path))
-        parts: list[str] = []
-        for block in _iter_blocks(doc):
-            if isinstance(block, Paragraph):
-                if block.text.strip():
-                    parts.append(block.text.strip())
-            elif isinstance(block, Table):
-                parts.extend(_table_lines(block))
-        return "\n\n".join(parts)
+        return _parse_docx(file_path)
     except Exception as e:
         return f"Ошибка при чтении DOCX: {e}"
+
+
+def _extract_doc_legacy(file_path: Path) -> str | None:
+    """Старый бинарный .doc — через внешние конвертеры, если они установлены."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    if shutil.which("antiword"):
+        try:
+            out = subprocess.run(["antiword", str(file_path)], capture_output=True, timeout=60)
+            if out.returncode == 0 and out.stdout.strip():
+                return out.stdout.decode("utf-8", "ignore").strip()
+        except Exception:
+            pass
+    if shutil.which("catdoc"):
+        try:
+            out = subprocess.run(["catdoc", "-d", "utf-8", str(file_path)], capture_output=True, timeout=60)
+            if out.returncode == 0 and out.stdout.strip():
+                return out.stdout.decode("utf-8", "ignore").strip()
+        except Exception:
+            pass
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if soffice:
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                subprocess.run([soffice, "--headless", "--convert-to", "txt:Text",
+                                "--outdir", td, str(file_path)], capture_output=True, timeout=120)
+                txts = list(Path(td).glob("*.txt"))
+                if txts:
+                    t = txts[0].read_text(encoding="utf-8", errors="ignore").strip()
+                    if t:
+                        return t
+        except Exception:
+            pass
+    return None
+
+
+def _extract_doc(file_path: Path) -> str:
+    """Word .doc: иногда это переименованный .docx — пробуем как docx, затем
+    внешние конвертеры для настоящего бинарного .doc, иначе — понятное сообщение."""
+    try:
+        t = _parse_docx(file_path)
+        if t.strip():
+            return t
+    except Exception:
+        pass
+    t = _extract_doc_legacy(file_path)
+    if t:
+        return t
+    return ("Файл в старом формате Word (.doc) — автоматически прочитать не удалось. "
+            "Попросите прислать документ в формате .docx или PDF.")
 
 
 def process_document(file_path: Path, original_name: str, uploaded_by: str) -> dict:
