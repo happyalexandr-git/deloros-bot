@@ -8,7 +8,7 @@
   </form>
   {% endif %}
 </div>
-<p class="muted" style="font-size:13px;margin-top:6px">Сбои обработки документов, голоса, картинок и агента. Время — Иркутск (UTC+8). Хранятся последние ~500 записей.</p>
+<p class="muted" style="font-size:13px;margin-top:6px">Сбои обработки (документы, голос, картинки, агент) и <b style="font-weight:500">пробелы в знаниях</b> — запросы, на которые бот не нашёл ответа. По вторым видно, чего боту не хватает и чему его дообучить. Время — Иркутск (UTC+8), хранятся последние ~500 записей.</p>
 {% if ok %}<div class="card" style="border-color:#4a7">{{ ok }}</div>{% endif %}
 
 {% if errors %}
@@ -17,7 +17,11 @@
   <div class="card" style="margin-bottom:10px;padding:12px 16px">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px">
       <span class="muted">{{ e.ts.replace('T', ' ')[:19] }}</span>
-      <span class="badge wait" style="font-size:12px">{{ e.where }}</span>
+      {% if e.where == 'не найдено' %}
+        <span class="badge" style="font-size:12px;color:var(--accent-deep);background:var(--accent-bg)">пробел в знаниях</span>
+      {% else %}
+        <span class="badge wait" style="font-size:12px">{{ e.where }}</span>
+      {% endif %}
       <span><b style="font-weight:500">{{ e.author }}</b></span>
       {% if e.chat_id %}<span class="muted">chat {{ e.chat_id }}</span>{% endif %}
     </div>

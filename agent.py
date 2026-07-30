@@ -396,19 +396,48 @@ def _resolve_targets(target: str) -> tuple[list[int], str]:
     return [v["user_id"]], member["name"]
 
 
+# Признаки того, что поиск ничего не дал (тексты ответов инструментов)
+_NOTHING_MARKERS = (
+    "ничего подходящего",
+    "ничего не найдено",
+    "пока нет записей",
+    "не найдено сообщений",
+    "ничего не нашёл",
+)
+
+
+def _log_if_nothing_found(result: str, what: str, sender: str, chat_id: int) -> None:
+    """Пишет в журнал случаи «бот не нашёл ответа».
+
+    Это не сбой, а пробел в знаниях: по таким записям видно, что спрашивают
+    участники и чего боту не хватает — материал для дообучения базы.
+    """
+    low = (result or "").lower()
+    if any(m in low for m in _NOTHING_MARKERS):
+        try:
+            from tools.error_log import log_error
+            log_error("не найдено", what, username=sender, chat_id=chat_id)
+        except Exception:
+            pass
+
+
 async def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0,
                         is_admin: bool = False, bot=None, sender: str = "") -> str:
     if tool_name == "get_chat_log":
         return get_chat_log(chat_id=chat_id, limit=tool_input.get("limit", 100))
     if tool_name == "search_chat_log":
-        return search_chat_log(chat_id=chat_id, query=tool_input["query"])
+        query = tool_input["query"]
+        res = search_chat_log(chat_id=chat_id, query=query)
+        _log_if_nothing_found(res, f"search_chat_log: «{query}»", sender, chat_id)
+        return res
     if tool_name == "list_kb":
         return list_kb()
     if tool_name == "search_kb":
-        return search_kb(
-            query=tool_input["query"],
-            category=tool_input.get("category"),
-        )
+        query = tool_input["query"]
+        category = tool_input.get("category")
+        res = search_kb(query=query, category=category)
+        _log_if_nothing_found(res, f"search_kb({category or 'все'}): «{query}»", sender, chat_id)
+        return res
     if tool_name == "get_news":
         return get_news(
             source=tool_input.get("source", "rbc"),
