@@ -50,25 +50,84 @@ def _collect_files(category: str | None) -> list:
     return files
 
 
+# Служебные слова запроса — не несут смысла для лексического поиска
+_STOP_WORDS = {
+    "кто", "что", "чем", "как", "где", "когда", "какие", "какой", "какая", "какое",
+    "есть", "ли", "из", "для", "про", "по", "на", "в", "с", "у", "и", "или", "не",
+    "нас", "наш", "наши", "нашем", "клуба", "клубе", "сообщества", "сообществе",
+    "занимается", "может", "помочь", "разбирается", "тема", "теме",
+}
+_SUFFIXES = ("иями", "ями", "ами", "ыми", "ими", "ому", "его", "ого", "ей", "ий",
+             "ые", "ая", "ое", "ых", "их", "ем", "ом", "ах", "ях", "ию", "ии",
+             "ие", "ья", "ов", "ы", "и", "а", "е", "о", "я", "ь", "у", "ю")
+
+
+def _stem(word: str) -> str:
+    """Грубая основа слова: отсекаем типичное русское окончание.
+
+    Полноценная морфология не нужна — достаточно, чтобы «образовательные»
+    и «образовательных» сошлись на общей основе «образовательн».
+    """
+    for suf in _SUFFIXES:
+        if word.endswith(suf) and len(word) - len(suf) >= 4:
+            return word[: -len(suf)]
+    return word
+
+
+def _lexical_scores(query: str, files: list) -> dict:
+    """{путь: доля совпавших основ слов запроса}. Ловит буквальные вхождения,
+    которые эмбеддинги могут недооценить на коротком запросе."""
+    import re
+    words = [w for w in re.findall(r"[а-яёa-z0-9]+", query.lower())
+             if len(w) >= 3 and w not in _STOP_WORDS]
+    stems = [_stem(w) for w in words]
+    if not stems:
+        return {}
+    scores = {}
+    for md_file in files:
+        try:
+            text = md_file.read_text(encoding="utf-8").lower()
+        except Exception:
+            continue
+        hits = sum(1 for s in stems if s in text)
+        if hits:
+            scores[md_file] = hits / len(stems)
+    return scores
+
+
 def search_kb(query: str, category: str | None = None) -> str:
     """
-    Семантический поиск по базе знаний (эмбеддинги OpenAI) — находит по смыслу,
-    а не по точному слову. При сбое эмбеддингов откатывается на подстрочный поиск.
+    Гибридный поиск по базе знаний: смысловой (эмбеддинги OpenAI) + лексический
+    по основам слов. Лексическая часть страхует короткие запросы («образовательные
+    программы»), где косинусное сходство с длинным профилем падает ниже порога.
     """
     files = _collect_files(category)
     if not files:
         return f"В базе знаний пока нет записей{f' в разделе {category}' if category else ''}."
 
+    lexical = _lexical_scores(query, files)
     try:
         from tools.embeddings import semantic_search
         ranked = semantic_search(query, files, top_k=5)
     except Exception:
         return _substring_search(query, files)  # фолбэк при недоступности OpenAI
 
-    results = []
+    # Кандидаты: прошедшие порог по смыслу + те, где нашлись слова запроса
+    picked: dict = {}
     for md_file, score in ranked:
-        if score < MIN_SCORE:
-            continue
+        if score >= MIN_SCORE:
+            picked[md_file] = {"sem": score, "lex": lexical.get(md_file, 0.0)}
+    for md_file, lex in lexical.items():
+        # совпала минимум половина значимых слов — считаем релевантным
+        if lex >= 0.5 and md_file not in picked:
+            sem = next((s for f, s in ranked if f == md_file), 0.0)
+            picked[md_file] = {"sem": sem, "lex": lex}
+
+    # Сортировка: сперва по лексическому совпадению, затем по смыслу
+    order = sorted(picked.items(), key=lambda kv: (kv[1]["lex"], kv[1]["sem"]), reverse=True)[:5]
+
+    results = []
+    for md_file, sc in order:
         try:
             text = md_file.read_text(encoding="utf-8")
         except Exception:
@@ -76,12 +135,15 @@ def search_kb(query: str, category: str | None = None) -> str:
         relative = md_file.relative_to(KB_PATH)
         related = _extract_related(text)
         related_str = f"\n**Связано с:** {related}" if related else ""
-        results.append(f"### [{relative}] (сходство {score:.2f}){related_str}\n{_body_snippet(text)}")
+        mark = f"сходство {sc['sem']:.2f}"
+        if sc["lex"]:
+            mark += f", совпало слов {int(sc['lex'] * 100)}%"
+        results.append(f"### [{relative}] ({mark}){related_str}\n{_body_snippet(text)}")
 
     if not results:
         return f"В базе знаний ничего подходящего по смыслу не найдено по запросу: «{query}»"
 
-    return f"Найдено по смыслу: {len(results)}\n\n" + "\n---\n".join(results)
+    return f"Найдено: {len(results)}\n\n" + "\n---\n".join(results)
 
 
 def _substring_search(query: str, files: list) -> str:
