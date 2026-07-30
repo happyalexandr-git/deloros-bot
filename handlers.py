@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager, nullcontext
 import json
 import logging
 import os
@@ -151,11 +152,36 @@ def _clean_mention(text: str) -> str:
     return text.strip()
 
 
-async def _typing(bot: Bot, chat_id: int) -> None:
+async def _typing_keepalive(bot: Bot, chat_id: int) -> None:
+    """Переотправляет TYPING_ON каждые 4 сек (MAX гасит индикатор через ~5 сек)."""
     try:
-        await bot.send_action(chat_id=chat_id, action=SenderAction.TYPING_ON)
+        while True:
+            await bot.send_action(chat_id=chat_id, action=SenderAction.TYPING_ON)
+            await asyncio.sleep(4)
+    except asyncio.CancelledError:
+        pass
     except Exception:
-        pass  # в личке chat_id может отсутствовать — индикатор не критичен
+        pass
+
+
+@asynccontextmanager
+async def _typing_action(bot: Bot, chat_id: int):
+    """Держит индикатор «печатает…» активным всё время работы бота.
+
+    Обработка (OpenAI, распознавание голоса, разбор документа) может идти
+    дольше, чем живёт индикатор, — держим его, пока внутри блока идёт работа.
+    ВАЖНО: блокирующие вызовы внутри блока выносить в asyncio.to_thread,
+    иначе event loop заморожен и пинги не уходят.
+    """
+    task = asyncio.create_task(_typing_keepalive(bot, chat_id))
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 async def _download(url: str, dest: Path) -> None:
@@ -271,15 +297,15 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
         chat_id = _peer_id(msg)
         username = _get_username(msg)
         log = get_chat_log(chat_id, limit=100)
-        await _typing(bot, chat_id)
-        response = await run_agent(
-            chat_id=chat_id,
-            username=username,
-            user_message=f"Сделай саммари последних сообщений чата:\n\n{log}",
-            chat_type=str(msg.recipient.chat_type),
-            is_admin=_is_admin_uid(msg.sender.user_id if msg.sender else None),
-            bot=bot,
-        )
+        async with _typing_action(bot, chat_id):
+            response = await run_agent(
+                chat_id=chat_id,
+                username=username,
+                user_message=f"Сделай саммари последних сообщений чата:\n\n{log}",
+                chat_type=str(msg.recipient.chat_type),
+                is_admin=_is_admin_uid(msg.sender.user_id if msg.sender else None),
+                bot=bot,
+            )
         await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
 
     @dp.message_created(Command("stats"))
@@ -357,16 +383,16 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             await event.message.answer("Слушаю — чем могу помочь?")
             return
 
-        await _typing(bot, chat_id)
         try:
-            response = await run_agent(
-                chat_id=chat_id,
-                username=username,
-                user_message=clean_text,
-                chat_type=str(msg.recipient.chat_type),
-                is_admin=_is_admin_uid(user_id),
-                bot=bot,
-            )
+            async with _typing_action(bot, chat_id):
+                response = await run_agent(
+                    chat_id=chat_id,
+                    username=username,
+                    user_message=clean_text,
+                    chat_type=str(msg.recipient.chat_type),
+                    is_admin=_is_admin_uid(user_id),
+                    bot=bot,
+                )
             await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             logger.error(f"Ошибка агента: {e}")
@@ -403,16 +429,15 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
         if url:
             local_path = UPLOADS_PATH / f"voice_{uuid.uuid4().hex}.ogg"
             try:
-                if reply:
-                    await _typing(bot, chat_id)
-                await _download(url, local_path)
-                from tools.voice_gigaam import available, transcribe_voice_local
-                # Инференс — синхронная CPU-работа, выносим в поток, чтобы не блокировать бота
-                if available():
-                    text = (await asyncio.to_thread(transcribe_voice_local, local_path) or "").strip()
-                elif os.environ.get("OPENAI_API_KEY"):
-                    from tools.voice_transcribe import transcribe_voice
-                    text = (await asyncio.to_thread(transcribe_voice, local_path) or "").strip()
+                async with (_typing_action(bot, chat_id) if reply else nullcontext()):
+                    await _download(url, local_path)
+                    from tools.voice_gigaam import available, transcribe_voice_local
+                    # Инференс — синхронная CPU-работа, выносим в поток, чтобы не блокировать бота
+                    if available():
+                        text = (await asyncio.to_thread(transcribe_voice_local, local_path) or "").strip()
+                    elif os.environ.get("OPENAI_API_KEY"):
+                        from tools.voice_transcribe import transcribe_voice
+                        text = (await asyncio.to_thread(transcribe_voice, local_path) or "").strip()
             except Exception as e:
                 logger.error(f"Ошибка транскрибации голоса: {e}")
                 elog("голос-транскрибация", e, username=username, chat_id=chat_id)
@@ -440,17 +465,17 @@ async def _handle_audio(event: MessageCreated, bot: Bot, audio, chat_id: int, us
 
     await event.message.answer(f"🎙 Распознано: _{text}_", parse_mode=ParseMode.MARKDOWN)
 
-    await _typing(bot, chat_id)
     try:
-        response = await run_agent(
-            chat_id=chat_id,
-            username=username,
-            user_message=text,
-            chat_type=str(event.message.recipient.chat_type),
-            is_admin=_is_admin_uid(event.message.sender.user_id if event.message.sender else None),
-            kind="voice",
-            bot=bot,
-        )
+        async with _typing_action(bot, chat_id):
+            response = await run_agent(
+                chat_id=chat_id,
+                username=username,
+                user_message=text,
+                chat_type=str(event.message.recipient.chat_type),
+                is_admin=_is_admin_uid(event.message.sender.user_id if event.message.sender else None),
+                kind="voice",
+                bot=bot,
+            )
         await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка агента (голос): {e}")
@@ -467,14 +492,14 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
             await event.message.answer("Не удалось получить изображение.")
         return
 
-    if reply:
-        await _typing(bot, chat_id)
     local_path = UPLOADS_PATH / f"image_{uuid.uuid4().hex}"
     try:
-        await _download(url, local_path)
-        image_bytes = local_path.read_bytes()
-        from tools.image_describe import describe_image
-        description = describe_image(image_bytes, caption).strip()
+        async with (_typing_action(bot, chat_id) if reply else nullcontext()):
+            await _download(url, local_path)
+            image_bytes = local_path.read_bytes()
+            from tools.image_describe import describe_image
+            # Синхронный vision-вызов — в поток, чтобы индикатор «печатает…» жил
+            description = (await asyncio.to_thread(describe_image, image_bytes, caption)).strip()
     except Exception as e:
         logger.error(f"Ошибка распознавания изображения: {e}")
         elog("картинка-распознавание", e, user_id=user_id, username=username, chat_id=chat_id)
@@ -504,17 +529,17 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
     else:
         user_message = f"Пользователь прислал изображение. {data_block}"
 
-    await _typing(bot, chat_id)
     try:
-        response = await run_agent(
-            chat_id=chat_id,
-            username=username,
-            user_message=user_message,
-            chat_type=str(event.message.recipient.chat_type),
-            is_admin=_is_admin_uid(user_id),
-            kind="image",
-            bot=bot,
-        )
+        async with _typing_action(bot, chat_id):
+            response = await run_agent(
+                chat_id=chat_id,
+                username=username,
+                user_message=user_message,
+                chat_type=str(event.message.recipient.chat_type),
+                is_admin=_is_admin_uid(user_id),
+                kind="image",
+                bot=bot,
+            )
         await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Ошибка агента (картинка): {e}")
@@ -542,8 +567,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
         await event.message.answer("Не удалось получить файл (нет ссылки на скачивание).")
         return
 
-    await _typing(bot, chat_id)
-
+    _typing_task = asyncio.create_task(_typing_keepalive(bot, chat_id))
     local_path = UPLOADS_PATH / original_name
     try:
         await _download(url, local_path)
@@ -558,7 +582,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             )
             return
 
-        result = process_document(local_path, original_name, username)
+        result = await asyncio.to_thread(process_document, local_path, original_name, username)
         # «Тихая» ошибка чтения (extract_text вернул строку-ошибку без исключения, напр. старый .doc)
         _prev = (result.get("preview") or "").lstrip()
         if _prev.startswith(("Ошибка при чтении", "Файл в старом формате", "Формат ")):
@@ -585,7 +609,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
         if os.environ.get("OPENAI_API_KEY"):
             try:
                 from tools.summarize import short_summary
-                summary = short_summary(result["content"])
+                summary = await asyncio.to_thread(short_summary, result["content"])
             except Exception as e:
                 logger.error(f"Ошибка резюме документа: {e}")
                 elog("документ-резюме", e, username=username, chat_id=chat_id)
@@ -624,7 +648,6 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             "- иначе → кратко резюмируй суть.\n"
             "Полный текст файла уже сохранён в базе для поиска — от вас нужна структурная запись и/или резюме."
         )
-        await _typing(bot, chat_id)
         response = await run_agent(
             chat_id=chat_id,
             username=username,
@@ -639,3 +662,9 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
         elog("документ-обработка", e, username=username, chat_id=chat_id)
         local_path.unlink(missing_ok=True)
         await event.message.answer(f"Не удалось обработать файл: {e}")
+    finally:
+        _typing_task.cancel()
+        try:
+            await _typing_task
+        except (asyncio.CancelledError, Exception):
+            pass

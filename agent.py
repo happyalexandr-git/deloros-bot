@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -532,7 +533,10 @@ async def run_agent(
 
     # Агентный цикл
     while True:
-        response = client.chat.completions.create(
+        # Вызов OpenAI блокирующий — выносим в поток, чтобы не морозить event loop
+        # (иначе стоит индикатор «печатает…» и другие сообщения не обрабатываются)
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=OPENAI_MODEL,
             max_tokens=4096,
             tools=TOOLS,
