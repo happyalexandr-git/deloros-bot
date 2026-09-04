@@ -1,4 +1,6 @@
 import asyncio
+import time
+from collections import OrderedDict
 from contextlib import asynccontextmanager, nullcontext
 import json
 import logging
@@ -150,6 +152,44 @@ def _clean_mention(text: str) -> str:
     if _BOT_USERNAME:
         text = text.replace(f"@{_BOT_USERNAME}", "")
     return text.strip()
+
+
+# --- Защита от повторной обработки одного сообщения ---
+# MAX повторяет доставку вебхука, если бот не подтвердил её за ~30 сек. Раньше
+# это приводило к двойной обработке файла (два ответа + двойные траты OpenAI).
+_SEEN_MIDS: "OrderedDict[str, float]" = OrderedDict()
+_SEEN_TTL = 900  # помним идентификаторы 15 минут
+_SEEN_MAX = 2000
+
+
+def _already_handled(msg) -> bool:
+    """True, если это сообщение уже обрабатывалось (повторная доставка)."""
+    mid = getattr(getattr(msg, "body", None), "mid", None)
+    if not mid:
+        return False
+    now = time.time()
+    while _SEEN_MIDS:
+        oldest_mid, ts = next(iter(_SEEN_MIDS.items()))
+        if ts < now - _SEEN_TTL or len(_SEEN_MIDS) > _SEEN_MAX:
+            _SEEN_MIDS.pop(oldest_mid, None)
+        else:
+            break
+    if mid in _SEEN_MIDS:
+        return True
+    _SEEN_MIDS[mid] = now
+    return False
+
+
+# Ссылки на фоновые задачи, чтобы их не собрал сборщик мусора
+_BG_TASKS: set = set()
+
+
+def _spawn(coro) -> None:
+    """Запускает обработку в фоне: хендлер сразу возвращается, и MAX получает
+    подтверждение вебхука мгновенно — без повторной доставки на долгих файлах."""
+    task = asyncio.create_task(coro)
+    _BG_TASKS.add(task)
+    task.add_done_callback(_BG_TASKS.discard)
 
 
 async def _typing_keepalive(bot: Bot, chat_id: int) -> None:
@@ -318,6 +358,10 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
         msg = event.message
         if msg.sender and msg.sender.is_bot:
             return
+        # Повторная доставка того же сообщения от MAX — молча игнорируем
+        if _already_handled(msg):
+            logger.info("Повторная доставка сообщения — пропускаю")
+            return
 
         chat_id = _peer_id(msg)
         user_id = msg.sender.user_id if msg.sender else None
@@ -356,21 +400,23 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
         # распознаём в лог, отвечаем на них только по упоминанию.
 
         # 1) Голос/аудио — MAX присылает транскрипцию в самом вложении
+        # Тяжёлую обработку уводим в фон (_spawn): хендлер возвращается сразу,
+        # MAX получает подтверждение и не шлёт сообщение повторно.
         audio = next((a for a in atts if getattr(a, "type", None) == AttachmentType.AUDIO), None)
         if audio is not None:
-            await _handle_audio(event, bot, audio, chat_id, username, reply=mentioned)
+            _spawn(_handle_audio(event, bot, audio, chat_id, username, reply=mentioned))
             return
 
         # 2) Документ — сохраняем + краткий ответ; полный разбор только по упоминанию/в личке
         doc = next((a for a in atts if getattr(a, "type", None) == AttachmentType.FILE), None)
         if doc is not None:
-            await _handle_document(event, bot, doc, chat_id, username, caption, deep=mentioned)
+            _spawn(_handle_document(event, bot, doc, chat_id, username, caption, deep=mentioned))
             return
 
         # 3) Картинка — gpt-4o vision описывает/извлекает текст, дальше как обычный запрос
         image = next((a for a in atts if getattr(a, "type", None) == AttachmentType.IMAGE), None)
         if image is not None:
-            await _handle_image(event, bot, image, chat_id, username, caption, user_id, reply=mentioned)
+            _spawn(_handle_image(event, bot, image, chat_id, username, caption, user_id, reply=mentioned))
             return
 
         # 4) Текст — в группе отвечаем только по упоминанию
@@ -383,21 +429,28 @@ def register_handlers(dp: Dispatcher, bot: Bot, bot_id: int, bot_username: str) 
             await event.message.answer("Слушаю — чем могу помочь?")
             return
 
-        try:
-            async with _typing_action(bot, chat_id):
-                response = await run_agent(
-                    chat_id=chat_id,
-                    username=username,
-                    user_message=clean_text,
-                    chat_type=str(msg.recipient.chat_type),
-                    is_admin=_is_admin_uid(user_id),
-                    bot=bot,
-                )
-            await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
-        except Exception as e:
-            logger.error(f"Ошибка агента: {e}")
-            elog("agent-текст", e, user_id=user_id, username=username, chat_id=chat_id)
-            await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
+        _spawn(_handle_text(event, bot, chat_id, username, clean_text,
+                            str(msg.recipient.chat_type), user_id))
+
+
+async def _handle_text(event: MessageCreated, bot: Bot, chat_id: int, username: str,
+                       clean_text: str, chat_type: str, user_id) -> None:
+    """Обычный текстовый запрос к агенту (выполняется в фоне)."""
+    try:
+        async with _typing_action(bot, chat_id):
+            response = await run_agent(
+                chat_id=chat_id,
+                username=username,
+                user_message=clean_text,
+                chat_type=chat_type,
+                is_admin=_is_admin_uid(user_id),
+                bot=bot,
+            )
+        await _reply(event, chat_id, response, parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        logger.error(f"Ошибка агента: {e}")
+        elog("agent-текст", e, user_id=user_id, username=username, chat_id=chat_id)
+        await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
 
 
 # ---------- обработка вложений ----------
@@ -598,8 +651,23 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
 
         chars = result["text_length"]
         if chars == 0:
-            await event.message.answer(
-                f"Файл `{original_name}` получил, но не смог извлечь из него текст.",
+            # Текста ноль. Для PDF это почти всегда скан (страницы — картинки):
+            # объясняем по-человечески и пишем в журнал как пробел.
+            if suffix == ".pdf":
+                from tools.doc_processor import ocr_available
+                if ocr_available():
+                    why = ("Похоже, это скан плохого качества — распознать текст не удалось. "
+                           "Пришлите, пожалуйста, текстовый PDF или DOCX.")
+                else:
+                    why = ("Похоже, это скан: страницы внутри — картинки, а распознавать "
+                           "текст с картинок я пока не умею. Пришлите текстовый PDF или DOCX.")
+            else:
+                why = "Не удалось извлечь текст. Пришлите файл в другом формате (DOCX или PDF)."
+            elog("документ-пустой-текст", f"{original_name}: текста 0 знаков. {why}",
+                 username=username, chat_id=chat_id)
+            await _reply(
+                event, chat_id,
+                f"📄 Файл `{original_name}` получил, но текст извлечь не смог.\n{why}",
                 parse_mode=ParseMode.MARKDOWN,
             )
             return

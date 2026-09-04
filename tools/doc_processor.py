@@ -22,6 +22,50 @@ def extract_text(file_path: Path) -> str:
         return f"Формат {suffix} не поддерживается для извлечения текста."
 
 
+# OCR: сканы распознаём через tesseract (если установлен в системе)
+OCR_MAX_PAGES = int(os.environ.get("OCR_MAX_PAGES", "30"))
+OCR_DPI = int(os.environ.get("OCR_DPI", "200"))
+OCR_LANG = os.environ.get("OCR_LANG", "rus+eng")
+
+
+def ocr_available() -> bool:
+    import shutil
+    return bool(shutil.which("tesseract"))
+
+
+def _ocr_pdf(file_path: Path) -> str:
+    """Распознаёт текст со страниц-картинок (скан) через tesseract.
+
+    Страницы рендерим из PDF в PNG (pymupdf) и прогоняем через tesseract.
+    Возвращает пустую строку, если tesseract не установлен или ничего не вышло.
+    """
+    if not ocr_available():
+        return ""
+    import subprocess
+    import tempfile
+    try:
+        import pymupdf
+        doc = pymupdf.open(str(file_path))
+        pages_text = []
+        with tempfile.TemporaryDirectory() as td:
+            for i, page in enumerate(doc):
+                if i >= OCR_MAX_PAGES:
+                    pages_text.append(f"[...распознаны первые {OCR_MAX_PAGES} страниц...]")
+                    break
+                img_path = Path(td) / f"p{i}.png"
+                page.get_pixmap(dpi=OCR_DPI).save(str(img_path))
+                out = subprocess.run(
+                    ["tesseract", str(img_path), "stdout", "-l", OCR_LANG],
+                    capture_output=True, timeout=120,
+                )
+                if out.returncode == 0:
+                    pages_text.append(out.stdout.decode("utf-8", "ignore").strip())
+        doc.close()
+        return "\n\n".join(t for t in pages_text if t).strip()
+    except Exception:
+        return ""
+
+
 def _extract_pdf(file_path: Path) -> str:
     try:
         import pymupdf
@@ -30,9 +74,14 @@ def _extract_pdf(file_path: Path) -> str:
         for page in doc:
             pages.append(page.get_text())
         doc.close()
-        return "\n\n".join(pages).strip()
+        text = "\n\n".join(pages).strip()
     except Exception as e:
         return f"Ошибка при чтении PDF: {e}"
+
+    # Текстового слоя нет — вероятно скан: пробуем распознать картинки
+    if not text:
+        return _ocr_pdf(file_path)
+    return text
 
 
 def _iter_blocks(parent):
