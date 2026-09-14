@@ -51,6 +51,16 @@
   </div>
 </div>
 
+<!-- Расходы -->
+<div class="card" style="margin-bottom:16px">
+  <div style="font-weight:500;margin-bottom:10px">Расходы за {{ usage.costs.days }} дней</div>
+  <div class="row" style="font-size:14px"><span style="flex:2">Ответы бота (GPT)</span><span class="muted" style="flex:1">{{ usage.costs.gpt_requests }} обращений</span><b>${{ "%.2f"|format(usage.costs.gpt) }}</b></div>
+  <div class="row" style="font-size:14px"><span style="flex:2">Голосовые</span><span class="muted" style="flex:1">{{ usage.costs.voice_sec // 60 }} мин</span><b>${{ "%.2f"|format(usage.costs.voice) }}</b></div>
+  <div class="row" style="font-size:14px"><span style="flex:2">Веб-поиск</span><span class="muted" style="flex:1">{{ usage.costs.web_calls }} запросов</span><b>${{ "%.2f"|format(usage.costs.web) }}</b></div>
+  <div class="row" style="font-size:14px;background:var(--accent-bg)"><span style="flex:2;font-weight:500">Итого</span><span style="flex:1"></span><b>${{ "%.2f"|format(usage.costs.total) }}</b></div>
+  <div class="muted" style="font-size:12px;margin-top:6px">Веб-поиск — оценка по прайсу OpenAI (токены + плата за поисковый запрос). Голос распознаётся локально и почти всегда бесплатен.</div>
+</div>
+
 <!-- Лента последних обращений -->
 <div class="card">
   <div style="font-weight:500;margin-bottom:8px">Последние обращения</div>

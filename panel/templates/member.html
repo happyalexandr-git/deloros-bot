@@ -39,6 +39,7 @@
   <div style="font-size:14px">
     GPT: {{ "{:,}".format(usage.input + usage.output) }} токенов → <b>${{ usage.gpt_cost }}</b>
     {% if usage.voice_sec %}· Голос: {{ usage.voice_sec }}с → <b>${{ usage.whisper_cost }}</b>{% endif %}
+    {% if usage.web_calls %}· Веб-поиск: {{ usage.web_calls }} запр. → <b>${{ usage.web_cost }}</b>{% endif %}
     · Итого: <b>${{ usage.total_cost }}</b>
   </div>
 </div>

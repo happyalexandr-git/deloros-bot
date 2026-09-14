@@ -355,7 +355,7 @@ def _engagement_status() -> str:
                 e = json.loads(line)
             except Exception:
                 continue
-            if e.get("service") == "whisper":
+            if e.get("service") in ("whisper", "web_search"):
                 continue
             if "dialog" in (e.get("chat_type") or "").lower():
                 u = (e.get("username") or "").strip()
@@ -454,7 +454,7 @@ async def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0,
     if tool_name == "web_search":
         # Поиск идёт секунды — в поток, чтобы не морозить event loop
         res = await asyncio.to_thread(
-            web_search, tool_input["query"], tool_input.get("max_results", 5)
+            web_search, tool_input["query"], tool_input.get("max_results", 5), sender, chat_id
         )
         if res.startswith(("Ошибка веб-поиска", "TAVILY_API_KEY не задан")):
             try:

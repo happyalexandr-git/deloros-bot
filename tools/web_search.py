@@ -36,7 +36,8 @@ def _clean_url(url: str) -> str:
     return url.rstrip("?&")
 
 
-def _openai_search(query: str) -> str:
+def _openai_search(query: str) -> tuple[str, dict]:
+    """Возвращает (текст с источниками, {model, input_tokens, output_tokens, calls})."""
     from openai import OpenAI
 
     kwargs = {"api_key": os.environ["OPENAI_API_KEY"]}
@@ -66,12 +67,19 @@ def _openai_search(query: str) -> str:
                 seen.add(url)
                 sources.append(f"- {getattr(ann, 'title', '') or url}: {url}")
 
+    usage = {
+        "model": SEARCH_MODEL,
+        "input_tokens": getattr(resp.usage, "input_tokens", 0) if resp.usage else 0,
+        "output_tokens": getattr(resp.usage, "output_tokens", 0) if resp.usage else 0,
+        # сколько раз модель реально ходила в поиск (за это берётся плата)
+        "calls": sum(1 for it in (resp.output or []) if getattr(it, "type", "") == "web_search_call"),
+    }
     if not answer.strip():
-        return f"По запросу «{query}» ничего не найдено."
+        return f"По запросу «{query}» ничего не найдено.", usage
     result = f"**Результат веб-поиска:**\n{answer.strip()}"
     if sources:
         result += "\n\n**Источники:**\n" + "\n".join(sources[:8])
-    return result
+    return result, usage
 
 
 def _clean_url_links(text: str) -> str:
@@ -94,12 +102,20 @@ def _tavily_search(query: str, max_results: int) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-def web_search(query: str, max_results: int = 5) -> str:
-    """Поиск информации в интернете. Возвращает текст с источниками или строку «Ошибка веб-поиска: …»."""
+def web_search(query: str, max_results: int = 5, username: str = "", chat_id: int = 0,
+               chat_type: str = "") -> str:
+    """Поиск информации в интернете. Возвращает текст с источниками или строку «Ошибка веб-поиска: …».
+    Расход записывается в usage.jsonl отдельной строкой (service=web_search)."""
     errors = []
     if os.environ.get("OPENAI_API_KEY"):
         try:
-            return _openai_search(query)
+            text, usage = _openai_search(query)
+            try:
+                from tools.usage_log import log_web_search_usage
+                log_web_search_usage(chat_id=chat_id, chat_type=chat_type, username=username, **usage)
+            except Exception:
+                pass
+            return text
         except Exception as e:
             errors.append(f"OpenAI: {str(e)[:200]}")
     if os.environ.get("TAVILY_API_KEY"):

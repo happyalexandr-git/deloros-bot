@@ -89,7 +89,8 @@ def progress(member: dict) -> dict:
 
 def usage_for(idents: set[str], days: int = 90) -> dict:
     """Суммарные расходы по участнику (токены, $, голос)."""
-    res = {"input": 0, "output": 0, "gpt_cost": 0.0, "voice_sec": 0, "whisper_cost": 0.0, "requests": 0}
+    res = {"input": 0, "output": 0, "gpt_cost": 0.0, "voice_sec": 0, "whisper_cost": 0.0, "requests": 0,
+           "web_calls": 0, "web_cost": 0.0}
     if not USAGE_PATH.exists():
         return res
     for line in USAGE_PATH.read_text(encoding="utf-8").splitlines():
@@ -99,7 +100,10 @@ def usage_for(idents: set[str], days: int = 90) -> dict:
             continue
         if e.get("username") not in idents:
             continue
-        if e.get("service") == "whisper":
+        if e.get("service") == "web_search":
+            res["web_calls"] += e.get("calls", 1)
+            res["web_cost"] += e.get("cost_usd", 0.0)
+        elif e.get("service") == "whisper":
             res["voice_sec"] += e.get("duration_seconds", 0)
             res["whisper_cost"] += e.get("cost_usd", 0.0)
         else:
@@ -107,7 +111,8 @@ def usage_for(idents: set[str], days: int = 90) -> dict:
             res["output"] += e.get("output_tokens", 0)
             res["gpt_cost"] += e.get("cost_usd", 0.0)
             res["requests"] += 1
-    res["total_cost"] = round(res["gpt_cost"] + res["whisper_cost"], 4)
+    res["total_cost"] = round(res["gpt_cost"] + res["whisper_cost"] + res["web_cost"], 4)
+    res["web_cost"] = round(res["web_cost"], 4)
     res["gpt_cost"] = round(res["gpt_cost"], 4)
     res["whisper_cost"] = round(res["whisper_cost"], 4)
     return res
@@ -209,7 +214,7 @@ def _gpt_entries() -> list[dict]:
             e = json.loads(line)
         except Exception:
             continue
-        if e.get("service") == "whisper" or not e.get("ts"):
+        if e.get("service") in ("whisper", "web_search") or not e.get("ts"):
             continue
         try:
             e["_ts"] = datetime.fromisoformat(e["ts"]).astimezone(IRK)
@@ -236,6 +241,34 @@ def _matching_count() -> int:
             if any(k in t for k in ask) or any(k in t for k in offer):
                 n += 1
     return n
+
+
+def costs_overview(days: int = 30) -> dict:
+    """Расходы за период по статьям: ответы бота (GPT), голос, веб-поиск."""
+    res = {"gpt": 0.0, "voice": 0.0, "voice_sec": 0, "web": 0.0, "web_calls": 0, "gpt_requests": 0}
+    if not USAGE_PATH.exists():
+        return {**res, "total": 0.0, "days": days}
+    cut = datetime.now(IRK) - timedelta(days=days)
+    for line in USAGE_PATH.read_text(encoding="utf-8").splitlines():
+        try:
+            e = json.loads(line)
+            if datetime.fromisoformat(e["ts"]).astimezone(IRK) < cut:
+                continue
+        except Exception:
+            continue
+        cost = e.get("cost_usd", 0.0)
+        if e.get("service") == "web_search":
+            res["web"] += cost
+            res["web_calls"] += e.get("calls", 1)
+        elif e.get("service") == "whisper":
+            res["voice"] += cost
+            res["voice_sec"] += e.get("duration_seconds", 0)
+        else:
+            res["gpt"] += cost
+            res["gpt_requests"] += 1
+    total = res["gpt"] + res["voice"] + res["web"]
+    return {k: (round(v, 2) if isinstance(v, float) else v) for k, v in res.items()} | {
+        "total": round(total, 2), "days": days}
 
 
 def usage_overview(roster: list[dict], feed_limit: int = 8, spark_days: int = 14) -> dict:
@@ -303,6 +336,7 @@ def usage_overview(roster: list[dict], feed_limit: int = 8, spark_days: int = 14
         "total": len(roster),
         "active_week": active_week,
         "matching": _matching_count(),
+        "costs": costs_overview(),
     }
 
 
