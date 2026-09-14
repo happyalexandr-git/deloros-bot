@@ -10,7 +10,8 @@ from pathlib import Path
 
 _URL_RE = re.compile(r"https?://[^\s<>\"'«»()\[\]]+", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_PHONE_RE = re.compile(r"(?:\+7|\b8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}\b")
+# +7/8 и ровно 10 цифр с любыми разделителями: мобильные и городские (3952) 40-50-60
+_PHONE_RE = re.compile(r"(?:\+7|(?<!\d)8)(?:[\s()\-]*\d){10}(?!\d)")
 
 # Сколько страниц PDF просматриваем в поисках QR (QR обычно на первых)
 QR_MAX_PAGES = 10
@@ -41,7 +42,8 @@ def extract_contacts(text: str) -> dict:
 
 def qr_available() -> bool:
     try:
-        from pyzbar.pyzbar import decode  # noqa: F401
+        from pyzbar.pyzbar import decode  # noqa: F401  (нужна системная libzbar)
+        from PIL import Image  # noqa: F401  (без Pillow расшифровка молча вернёт пусто)
         return True
     except Exception:
         return False
