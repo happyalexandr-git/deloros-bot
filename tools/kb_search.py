@@ -196,3 +196,44 @@ def _extract_snippet(text: str, query: str, context: int = 300) -> str:
     if end < len(text):
         snippet = snippet + "..."
     return snippet
+
+
+def recent_documents(chat_id: int | None = None, limit: int = 5) -> str:
+    """Последние присланные документы (свежие сверху) со ссылками и началом текста.
+
+    Документы из других чатов не показываем (приватность лички); у старых
+    документов чат не записан — их показываем как есть.
+    """
+    folder = KB_PATH / CATEGORY_MAP["documents"]
+    if not folder.exists():
+        return "Документов в базе пока нет."
+    files = sorted(folder.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)
+    out = []
+    for f in files:
+        try:
+            text = f.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        doc_chat = None
+        for line in text.splitlines():
+            if line.startswith("- Чат:"):
+                doc_chat = line.split(":", 1)[1].strip()
+                break
+        if chat_id is not None and doc_chat is not None and doc_chat != str(chat_id):
+            continue
+        meta = "\n".join(l for l in text.splitlines() if l.startswith(("- Файл:", "- Загружен:", "- Загрузил:")))
+        links = ""
+        if "## Ссылки и контакты" in text:
+            links = text.split("## Ссылки и контакты", 1)[1].split("## Содержимое", 1)[0].strip()
+        body = text.split("## Содержимое", 1)[1].strip() if "## Содержимое" in text else ""
+        body = body[:1500] + ("…" if len(body) > 1500 else "")
+        block = f"### {f.stem}\n{meta}"
+        if links:
+            block += f"\n{links}"
+        block += f"\n\n{body}"
+        out.append(block)
+        if len(out) >= limit:
+            break
+    if not out:
+        return "Свежих документов в этом чате не найдено."
+    return f"Последние документы ({len(out)}):\n\n" + "\n\n---\n\n".join(out)

@@ -199,7 +199,7 @@ def _extract_doc(file_path: Path) -> str:
             "Попросите прислать документ в формате .docx или PDF.")
 
 
-def process_document(file_path: Path, original_name: str, uploaded_by: str) -> dict:
+def process_document(file_path: Path, original_name: str, uploaded_by: str, chat_id=None) -> dict:
     """
     Обрабатывает документ: извлекает текст и возвращает данные для сохранения в KB.
     """
@@ -220,12 +220,21 @@ def process_document(file_path: Path, original_name: str, uploaded_by: str) -> d
     # Формируем краткое превью (первые 500 символов)
     preview = text[:500] + "..." if len(text) > 500 else text
 
+    # Ссылки/контакты вытаскиваем кодом, QR-коды расшифровываем — чтобы они не
+    # потерялись при пересказе и бот мог отдать их по просьбе
+    from tools.doc_extras import extract_contacts, qr_from_file, links_block
+    contacts = extract_contacts(text)
+    qr_links = qr_from_file(file_path)
+    extras = links_block(contacts, qr_links)
+    extras_section = f"\n## Ссылки и контакты\n{extras}\n" if extras else ""
+    chat_line = f"\n- Чат: {chat_id}" if chat_id is not None else ""
+
     content = f"""## Метаданные
 - Файл: {original_name}
 - Тип: {doc_type}
 - Загружен: {today}
-- Загрузил: {uploaded_by}
-
+- Загрузил: {uploaded_by}{chat_line}
+{extras_section}
 ## Содержимое
 
 {text}
@@ -237,4 +246,8 @@ def process_document(file_path: Path, original_name: str, uploaded_by: str) -> d
         "preview": preview,
         "text_length": len(text),
         "tags": [doc_type.lower(), uploaded_by.lstrip("@")],
+        "links": contacts["links"],
+        "qr_links": qr_links,
+        "emails": contacts["emails"],
+        "phones": contacts["phones"],
     }

@@ -553,6 +553,17 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
             from tools.image_describe import describe_image
             # Синхронный vision-вызов — в поток, чтобы индикатор «печатает…» жил
             description = (await asyncio.to_thread(describe_image, image_bytes, caption)).strip()
+            # QR-коды на картинке расшифровываем кодом — модель ссылку из QR не прочитает
+            from tools.doc_extras import qr_from_image_bytes
+            qr_links = await asyncio.to_thread(qr_from_image_bytes, image_bytes)
+            if qr_links:
+                description += "\nСсылки из QR-кодов на картинке: " + ", ".join(qr_links)
+                try:
+                    from agent import add_system_event
+                    add_system_event(chat_id, f"{username} прислал картинку с QR-кодом. "
+                                              f"Ссылки из QR: {', '.join(qr_links)}")
+                except Exception:
+                    pass
     except Exception as e:
         logger.error(f"Ошибка распознавания изображения: {e}")
         elog("картинка-распознавание", e, user_id=user_id, username=username, chat_id=chat_id)
@@ -600,6 +611,27 @@ async def _handle_image(event: MessageCreated, bot: Bot, image, chat_id: int,
         await event.message.answer("Произошла ошибка. Попробуйте ещё раз.")
 
 
+def _remember_document(chat_id: int, username: str, name: str, summary: str, result: dict) -> None:
+    """Заметка о присланном документе в историю диалога агента (без вызова LLM)."""
+    try:
+        from agent import add_system_event
+        parts = [f"{username} прислал в чат документ «{name}»."]
+        if summary:
+            parts.append(f"Кратко: {summary}")
+        if result.get("links"):
+            parts.append("Ссылки в тексте: " + ", ".join(result["links"][:10]))
+        if result.get("qr_links"):
+            parts.append("Ссылки из QR-кодов: " + ", ".join(result["qr_links"][:10]))
+        if result.get("emails"):
+            parts.append("Email: " + ", ".join(result["emails"][:5]))
+        if result.get("phones"):
+            parts.append("Телефоны: " + ", ".join(result["phones"][:5]))
+        parts.append("Полный текст сохранён в базе — search_kb(category='documents').")
+        add_system_event(chat_id, " ".join(parts))
+    except Exception as e:
+        logger.error(f"Не удалось запомнить документ: {e}")
+
+
 async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, username: str,
                            caption: str = "", deep: bool = True):
     """Обрабатывает документ. Всегда сохраняет в базу (→ панель) и кратко отвечает
@@ -635,7 +667,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             )
             return
 
-        result = await asyncio.to_thread(process_document, local_path, original_name, username)
+        result = await asyncio.to_thread(process_document, local_path, original_name, username, chat_id)
         # «Тихая» ошибка чтения (extract_text вернул строку-ошибку без исключения, напр. старый .doc)
         _prev = (result.get("preview") or "").lstrip()
         if _prev.startswith(("Ошибка при чтении", "Файл в старом формате", "Формат ")):
@@ -665,6 +697,7 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
                 why = "Не удалось извлечь текст. Пришлите файл в другом формате (DOCX или PDF)."
             elog("документ-пустой-текст", f"{original_name}: текста 0 знаков. {why}",
                  username=username, chat_id=chat_id)
+            _remember_document(chat_id, username, original_name, "", result)
             await _reply(
                 event, chat_id,
                 f"📄 Файл `{original_name}` получил, но текст извлечь не смог.\n{why}",
@@ -688,6 +721,9 @@ async def _handle_document(event: MessageCreated, bot: Bot, doc, chat_id: int, u
             f"📄 Получил документ `{original_name}` — {chars_str} знаков.{about}",
             parse_mode=ParseMode.MARKDOWN,
         )
+        # Кладём в память чата, что пришёл файл, о чём он и какие в нём ссылки —
+        # иначе через пять минут на «укажи ссылку на регистрацию» бот о файле «не знает»
+        _remember_document(chat_id, username, original_name, summary, result)
 
         # Полный разбор (профиль/встреча/исследование) — только по упоминанию или в личке
         if not deep:

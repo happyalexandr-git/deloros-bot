@@ -8,7 +8,7 @@
   </form>
   {% endif %}
 </div>
-<p class="muted" style="font-size:13px;margin-top:6px">Сбои обработки (документы, голос, картинки, агент) и <b style="font-weight:500">пробелы в знаниях</b> — запросы, на которые бот не нашёл ответа. По вторым видно, чего боту не хватает и чему его дообучить. Время — Иркутск (UTC+8), хранятся последние ~500 записей.</p>
+<p class="muted" style="font-size:13px;margin-top:6px">Сбои обработки (документы, голос, картинки, веб-поиск) и <b style="font-weight:500">плохие ответы</b> — каждый ответ бота оценивается по смыслу: не нашёл, не стал искать, выдумал ограничение, лишний переспрос. По ним видно, чего боту не хватает и чему его дообучить. Время — Иркутск (UTC+8), хранятся последние ~500 записей.</p>
 {% if ok %}<div class="card" style="border-color:#4a7">{{ ok }}</div>{% endif %}
 
 {% if errors %}
@@ -19,6 +19,8 @@
       <span class="muted">{{ e.ts.replace('T', ' ')[:19] }}</span>
       {% if e.where == 'не найдено' %}
         <span class="badge" style="font-size:12px;color:var(--accent-deep);background:var(--accent-bg)">пробел в знаниях</span>
+      {% elif e.where.startswith('ответ:') %}
+        <span class="badge" style="font-size:12px;color:#8a4b00;background:#fff1dc">плохой ответ · {{ e.where[6:].strip() }}</span>
       {% else %}
         <span class="badge wait" style="font-size:12px">{{ e.where }}</span>
       {% endif %}

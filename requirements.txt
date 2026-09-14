@@ -17,3 +17,5 @@ onnxruntime
 librosa
 soundfile
 numpy==2.2.6
+pyzbar
+Pillow

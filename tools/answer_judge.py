@@ -1,0 +1,119 @@
+"""Смысловая оценка ответов бота для журнала «Ошибки».
+
+После каждого ответа лёгкая модель (по умолчанию gpt-4o-mini) смотрит на вопрос,
+контекст, вызванные инструменты и ответ и решает, помог ли бот. Провалы пишутся
+в журнал с категорией и объяснением — это материал для дообучения бота.
+
+Оценка идёт в фоне и не задерживает ответ пользователю. Ловим по смыслу, а не по
+словам: «уточните, пожалуйста» бывает и уместным вопросом, и лишним переспросом.
+"""
+import json
+import logging
+import os
+
+import httpx
+from openai import OpenAI
+
+logger = logging.getLogger(__name__)
+
+JUDGE_MODEL = os.environ.get("OPENAI_JUDGE_MODEL", "gpt-4o-mini")
+
+CATEGORIES = (
+    "не нашёл",              # искал, но данных нет — пробел в базе
+    "не стал искать",        # ответил, не заглянув в документы/базу/историю
+    "выдумал ограничение",   # «нет доступа», «не умею», хотя возможность есть
+    "лишний переспрос",      # переспросил то, что понятно из контекста
+    "сбой инструмента",      # упал поиск/сервис
+    "неверный ответ",        # ответ противоречит данным
+    "другое",
+)
+
+_JUDGE_PROMPT = """Ты проверяешь качество ответов бота «Делорос» — ассистента чата сообщества «Деловая Россия».
+
+Что умеет бот (это факт, а не предположение):
+- видит все файлы, присланные в чат: их текст, ссылки, email, телефоны и ссылки из QR-кодов сохранены; инструменты recent_documents и search_kb(category="documents");
+- ищет участников по компетенциям (search_kb), историю чата (search_chat_log), в интернете (web_search);
+- распознаёт голосовые и картинки, ставит напоминания, пишет участникам в личку.
+Доступа к личной почте участников у бота нет, но фраза «указано в письме» почти всегда означает присланный в чат документ.
+
+Оцени ОДИН последний ответ бота. Бот ПОМОГ, если ответил по существу или честно сообщил, что проверил доступные источники и данных нет.
+Бот НЕ помог, если:
+- «не нашёл» — искал в подходящих источниках, но данных нет (пробел в базе знаний);
+- «не стал искать» — ответ мог быть в документах/базе/истории, но нужный инструмент не вызван;
+- «выдумал ограничение» — заявил «нет доступа», «не могу», «не умею», хотя возможность у него есть;
+- «лишний переспрос» — переспросил то, что уже ясно из контекста;
+- «сбой инструмента» — ответить помешала ошибка сервиса;
+- «неверный ответ» — ответ противоречит данным из контекста или инструментов;
+- «другое».
+
+НЕ считай провалом: приветствия и благодарности; вопросы онбординг-интервью в личке; уточнение, когда без него действительно нельзя; вежливый отказ в действии, на которое у участника нет прав.
+
+Верни строго JSON: {"ok": true|false, "category": "<одна из категорий или помог>", "reason": "<одно-два предложения по-русски: что пошло не так и где был ответ>"}"""
+
+
+def _client() -> OpenAI:
+    kwargs = {"api_key": os.environ["OPENAI_API_KEY"]}
+    if os.environ.get("OPENAI_BASE_URL"):
+        kwargs["base_url"] = os.environ["OPENAI_BASE_URL"]
+    if os.environ.get("PROXY_URL"):
+        kwargs["http_client"] = httpx.Client(proxy=os.environ["PROXY_URL"])
+    return OpenAI(**kwargs)
+
+
+def judge_answer(question: str, answer: str, context: list[dict], tool_calls: list[dict]) -> dict | None:
+    """Синхронная оценка. Возвращает {"ok", "category", "reason"} или None при сбое."""
+    ctx_lines = []
+    for m in context[-8:]:
+        content = m.get("content")
+        if isinstance(content, str) and content.strip():
+            ctx_lines.append(f"{m.get('role')}: {content[:600]}")
+    tools_lines = [
+        f"- {t['name']}({json.dumps(t.get('args', {}), ensure_ascii=False)[:200]}) → {str(t.get('result', ''))[:500]}"
+        for t in tool_calls
+    ] or ["(инструменты не вызывались)"]
+
+    user_block = (
+        "КОНТЕКСТ ЧАТА (последние сообщения до вопроса):\n" + ("\n".join(ctx_lines) or "(пусто)")
+        + "\n\nВОПРОС УЧАСТНИКА:\n" + question[:2000]
+        + "\n\nВЫЗВАННЫЕ ИНСТРУМЕНТЫ:\n" + "\n".join(tools_lines)
+        + "\n\nОТВЕТ БОТА:\n" + answer[:2000]
+    )
+    try:
+        resp = _client().chat.completions.create(
+            model=JUDGE_MODEL,
+            temperature=0,
+            max_tokens=250,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": _JUDGE_PROMPT},
+                {"role": "user", "content": user_block},
+            ],
+        )
+        data = json.loads(resp.choices[0].message.content or "{}")
+        return {
+            "ok": bool(data.get("ok", True)),
+            "category": str(data.get("category") or "другое"),
+            "reason": str(data.get("reason") or ""),
+        }
+    except Exception as e:
+        logger.error(f"answer_judge: оценка не удалась: {e}")
+        return None
+
+
+def judge_and_log(question: str, answer: str, context: list[dict], tool_calls: list[dict],
+                  username: str, chat_id: int) -> None:
+    """Оценить ответ и записать провал в журнал «Ошибки» (вызывать в потоке)."""
+    verdict = judge_answer(question, answer, context, tool_calls)
+    if not verdict or verdict["ok"]:
+        return
+    try:
+        from tools.error_log import log_error
+        used = ", ".join(t["name"] for t in tool_calls) or "нет"
+        log_error(
+            f"ответ: {verdict['category']}",
+            f"Вопрос: {question[:500]}\nОтвет бота: {answer[:500]}\n"
+            f"Инструменты: {used}\nПочему плохо: {verdict['reason']}",
+            username=username, chat_id=chat_id,
+        )
+    except Exception as e:
+        logger.error(f"answer_judge: не удалось записать в журнал: {e}")
