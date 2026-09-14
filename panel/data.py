@@ -243,6 +243,13 @@ def _matching_count() -> int:
     return n
 
 
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    """1 запрос, 2 запроса, 5 запросов."""
+    n10, n100 = n % 10, n % 100
+    word = one if n10 == 1 and n100 != 11 else few if 2 <= n10 <= 4 and not 12 <= n100 <= 14 else many
+    return f"{n} {word}"
+
+
 def costs_overview(days: int = 30) -> dict:
     """Расходы за период по статьям: ответы бота (GPT), голос, веб-поиск."""
     res = {"gpt": 0.0, "voice": 0.0, "voice_sec": 0, "web": 0.0, "web_calls": 0, "gpt_requests": 0}
@@ -268,7 +275,9 @@ def costs_overview(days: int = 30) -> dict:
             res["gpt_requests"] += 1
     total = res["gpt"] + res["voice"] + res["web"]
     return {k: (round(v, 2) if isinstance(v, float) else v) for k, v in res.items()} | {
-        "total": round(total, 2), "days": days}
+        "total": round(total, 2), "days": days,
+        "gpt_label": _plural(res["gpt_requests"], "обращение", "обращения", "обращений"),
+        "web_label": _plural(res["web_calls"], "запрос", "запроса", "запросов")}
 
 
 def usage_overview(roster: list[dict], feed_limit: int = 8, spark_days: int = 14) -> dict:
