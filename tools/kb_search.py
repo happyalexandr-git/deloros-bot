@@ -138,7 +138,12 @@ def search_kb(query: str, category: str | None = None) -> str:
         mark = f"сходство {sc['sem']:.2f}"
         if sc["lex"]:
             mark += f", совпало слов {int(sc['lex'] * 100)}%"
-        results.append(f"### [{relative}] ({mark}){related_str}\n{_body_snippet(text)}")
+        entry = f"### [{relative}] ({mark}){related_str}\n{_body_snippet(text)}"
+        if str(relative).startswith("documents"):
+            links = _doc_links(text)
+            if links:
+                entry += f"\n{links}"
+        results.append(entry)
 
     if not results:
         return f"В базе знаний ничего подходящего по смыслу не найдено по запросу: «{query}»"
@@ -161,6 +166,16 @@ def _substring_search(query: str, files: list) -> str:
     if not results:
         return f"В базе знаний ничего не найдено по запросу: «{query}»"
     return f"Найдено совпадений: {len(results)}\n\n" + "\n---\n".join(results[:5])
+
+
+def _doc_links(text: str) -> str:
+    """Ссылки/контакты документа. Берём сохранённый блок, а у старых документов
+    (сохранены до появления блока) извлекаем на лету из ПОЛНОГО текста —
+    иначе ссылка в конце документа обрезалась бы вместе со сниппетом."""
+    if "## Ссылки и контакты" in text:
+        return text.split("## Ссылки и контакты", 1)[1].split("## Содержимое", 1)[0].strip()
+    from tools.doc_extras import extract_contacts, links_block
+    return links_block(extract_contacts(text), [])
 
 
 def _body_snippet(text: str, limit: int = 400) -> str:
@@ -222,11 +237,9 @@ def recent_documents(chat_id: int | None = None, limit: int = 5) -> str:
         if chat_id is not None and doc_chat is not None and doc_chat != str(chat_id):
             continue
         meta = "\n".join(l for l in text.splitlines() if l.startswith(("- Файл:", "- Загружен:", "- Загрузил:")))
-        links = ""
-        if "## Ссылки и контакты" in text:
-            links = text.split("## Ссылки и контакты", 1)[1].split("## Содержимое", 1)[0].strip()
+        links = _doc_links(text)
         body = text.split("## Содержимое", 1)[1].strip() if "## Содержимое" in text else ""
-        body = body[:1500] + ("…" if len(body) > 1500 else "")
+        body = body[:3000] + ("…" if len(body) > 3000 else "")
         block = f"### {f.stem}\n{meta}"
         if links:
             block += f"\n{links}"
