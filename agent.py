@@ -452,9 +452,9 @@ async def _execute_tool(tool_name: str, tool_input: dict, chat_id: int = 0,
     if tool_name == "recent_documents":
         return recent_documents(chat_id=chat_id, limit=tool_input.get("limit", 5))
     if tool_name == "web_search":
-        res = web_search(
-            query=tool_input["query"],
-            max_results=tool_input.get("max_results", 5),
+        # Поиск идёт секунды — в поток, чтобы не морозить event loop
+        res = await asyncio.to_thread(
+            web_search, tool_input["query"], tool_input.get("max_results", 5)
         )
         if res.startswith(("Ошибка веб-поиска", "TAVILY_API_KEY не задан")):
             try:
