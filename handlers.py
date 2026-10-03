@@ -233,7 +233,11 @@ async def _download(url: str, dest: Path) -> None:
 
 def _attachments(msg) -> list:
     body = msg.body
-    return (body.attachments if body else None) or []
+    attachments = list((body.attachments if body else None) or [])
+    link = msg.link
+    if link and link.type == MessageLinkType.FORWARD and link.message:
+        attachments.extend(link.message.attachments or [])
+    return attachments
 
 
 def _payload_url(att) -> str | None:
